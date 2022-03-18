@@ -8,6 +8,8 @@ use std::env;
 use std::path::PathBuf;
 use serde::Deserialize;
 use sqlx::postgres::PgPoolOptions;
+use std::process::Command;
+
 struct Data {pool: sqlx::PgPool, client: reqwest::Client}
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
@@ -82,7 +84,17 @@ async fn vote(
             })
         }).await?;
     } else {
-        ctx.say(format!("**Error:** {}", json["reason"].as_str().unwrap_or("Unknown error"))).await?;
+        ctx.send(|m| {
+            m.content(format!("**Error when voting for {}:** {}", bot.name, json["reason"].as_str().unwrap_or("Unknown error"))).components(|c| {
+                c.create_action_row(|ar| {
+                    ar.create_button(|b| {
+                        b.style(serenity::ButtonStyle::Primary)
+                            .label("Toggle Vote Reminders!")
+                            .custom_id(format!("vrtoggle-{}-{}", ctx.author().id, bot.id))
+                    })
+                })
+            })
+        }).await?;
     }
 
     Ok(())
@@ -103,17 +115,34 @@ async fn help(
             extra_text_at_bottom: "\
 Squirrelflight Help. Ask on our support server for more information\n",
             show_context_menu_commands: true,
-            ..Default::default()
+            ..poise::builtins::HelpConfiguration::default()
         },
     )
     .await?;
     Ok(())
 }
 
+/// Returns version information
+#[poise::command(prefix_command, slash_command)]
+async fn about(ctx: Context<'_>) -> Result<(), Error> {
+    let git_commit_hash = Command::new("git")
+    .args(["rev-parse", "HEAD"]).output();
+
+    let hash: String;
+
+    if git_commit_hash.is_err() {
+        hash = "Unknown".to_string();
+    } else {
+        hash = String::from_utf8(git_commit_hash.unwrap().stdout).unwrap_or_else(|_| "Unknown (utf8 parse failure)".to_string());
+    }
+    ctx.say(format!("Squirrelflight v0.1.0\n\n**Commit Hash:** {}", hash)).await?;
+    Ok(())
+}
+
 /// Register application commands in this guild or globally
 ///
 /// Run with no arguments to register in guild, run with argument "global" to register globally.
-#[poise::command(prefix_command, hide_in_help)]
+#[poise::command(prefix_command, hide_in_help, owners_only, track_edits)]
 async fn register(ctx: Context<'_>, #[flag] global: bool) -> Result<(), Error> {
     poise::builtins::register_application_commands(ctx, global).await?;
 
@@ -157,21 +186,21 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
         }
         error => {
             if let Err(e) = poise::builtins::on_error(error).await {
-                error!("Error while handling error: {}", e)
+                error!("Error while handling error: {}", e);
             }
         }
     }
 }
 
 async fn event_listener(
-    _ctx: &serenity::Context,
+    ctx: &serenity::Context,
     event: &poise::Event<'_>,
     _framework: &poise::Framework<Data, Error>,
     user_data: &Data,
 ) -> Result<(), Error> {
     match event {
         poise::Event::Ready { data_about_bot } => {
-            info!("{} is connected!", data_about_bot.user.name)
+            info!("{} is connected!", data_about_bot.user.name);
         }
         poise::Event::InteractionCreate { interaction } => {
             let msg_inter = interaction.clone().message_component();
@@ -214,7 +243,7 @@ async fn event_listener(
                                 )
                                 .execute(&user_data.pool)
                                 .await?;
-                                msg_inter.create_interaction_response(_ctx.http.clone(), |m| {
+                                msg_inter.create_interaction_response(ctx.http.clone(), |m| {
                                     m.interaction_response_data(|m| {
                                         m.content("You have successfully subscribed to vote reminders!");
                                         m.flags(serenity::model::interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
@@ -229,7 +258,7 @@ async fn event_listener(
                                 let row = row.unwrap();
                                 for bot in row.vote_reminders {
                                     if bot == bot_id {
-                                        msg_inter.create_interaction_response(_ctx.http.clone(), |m| {
+                                        msg_inter.create_interaction_response(ctx.http.clone(), |m| {
                                             m.interaction_response_data(|m| {
                                                 m.content("You have already subscribed to vote reminders for this bot!");
                                                 m.flags(serenity::model::interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
@@ -248,7 +277,7 @@ async fn event_listener(
                                 )
                                 .execute(&user_data.pool)
                                 .await?;
-                                msg_inter.create_interaction_response(_ctx.http.clone(), |m| {
+                                msg_inter.create_interaction_response(ctx.http.clone(), |m| {
                                     m.interaction_response_data(|m| {
                                         m.content("You have successfully subscribed to vote reminders!");
                                         m.flags(serenity::model::interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
@@ -260,7 +289,7 @@ async fn event_listener(
                             Some(err) => {
                                 // Odd error, lets return it
                                 error!("{}", err);
-                                msg_inter.create_interaction_response(_ctx.http.clone(), |m| {
+                                msg_inter.create_interaction_response(ctx.http.clone(), |m| {
                                     m.interaction_response_data(|m| {
                                         m.content(format!("**Error:** {}", err));
                                         m.flags(serenity::model::interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
@@ -282,11 +311,11 @@ async fn event_listener(
 
 #[tokio::main]
 async fn main() {
+    const MAX_CONNECTIONS: u32 = 3; // max connections to the database, we don't need too many here
+
     std::env::set_var("RUST_LOG", "squirrelflight=debug");
     env_logger::init();
     info!("Starting Squirrelfight...");
-
-    const MAX_CONNECTIONS: u32 = 3; // max connections to the database, we don't need too many here
 
     let client = reqwest::Client::builder()
     .user_agent("FatesList-Squirrelflight/1.0 (internal microservice)")
@@ -309,7 +338,7 @@ async fn main() {
             // configure framework here
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("+".into()),
-                ..Default::default()
+                ..poise::PrefixFrameworkOptions::default()
             },
             /// This code is run before every command
             pre_command: |ctx| {
@@ -327,8 +356,8 @@ async fn main() {
             listener: |ctx, event, framework, user_data| { 
                 Box::pin(event_listener(ctx, event, framework, user_data))
             },
-            commands: vec![accage(), vote(), help(), register()],
-            ..Default::default()
+            commands: vec![accage(), vote(), help(), register(), about()],
+            ..poise::FrameworkOptions::default()
         })
         .run().await.unwrap();
 }

@@ -9,8 +9,12 @@ use std::path::PathBuf;
 use serde::Deserialize;
 use sqlx::postgres::PgPoolOptions;
 use std::process::Command;
+use std::time::Duration;
+use tokio::{task, time};
+use std::sync::Arc;
+use poise::serenity_prelude::Mentionable;
 
-struct Data {pool: sqlx::PgPool, client: reqwest::Client}
+struct Data {pool: sqlx::PgPool, client: reqwest::Client, key_data: KeyData}
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
@@ -155,7 +159,17 @@ pub struct Secrets {
     pub token_squirrelflight: String,
 }
 
-fn get_bot_token() -> String {
+#[derive(Deserialize, Clone)]
+pub struct KeyChannels {
+    vote_reminder_channel: serenity::model::id::ChannelId,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct KeyData {
+    channels: KeyChannels,
+}
+
+fn get_data_dir() -> String {
     let path = match env::var_os("HOME") {
         None => { panic!("$HOME not set"); }
         Some(path) => PathBuf::from(path),
@@ -165,6 +179,12 @@ fn get_bot_token() -> String {
 
     debug!("Data dir: {}", data_dir);
 
+    data_dir
+}
+
+fn get_bot_token() -> String {
+    let data_dir = get_data_dir();
+
     // open secrets.json, handle config
     let mut file = File::open(data_dir + "secrets.json").expect("No config file found");
     let mut data = String::new();
@@ -173,6 +193,19 @@ fn get_bot_token() -> String {
     let secrets: Secrets = serde_json::from_str(&data).expect("JSON was not well-formatted");
 
     secrets.token_squirrelflight
+}
+
+fn get_key_data() -> KeyData {
+    let data_dir = get_data_dir();
+
+    // open discord.json, handle config
+    let mut file = File::open(data_dir + "discord.json").expect("No config file found");
+    let mut data = String::new();
+    file.read_to_string(&mut data).unwrap();
+
+    let data: KeyData = serde_json::from_str(&data).expect("Discord JSON was not well-formatted");
+
+    data
 }
 
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
@@ -201,6 +234,14 @@ async fn event_listener(
     match event {
         poise::Event::Ready { data_about_bot } => {
             info!("{} is connected!", data_about_bot.user.name);
+
+            let ctx = ctx.to_owned();
+            let pool = user_data.pool.clone();
+            let key_data = user_data.key_data.clone();
+
+            task::spawn(async move {
+                vote_reminder_task(pool, key_data, ctx.http).await;
+            });
         }
         poise::Event::InteractionCreate { interaction } => {
             let msg_inter = interaction.clone().message_component();
@@ -309,6 +350,107 @@ async fn event_listener(
     Ok(())
 }
 
+async fn vote_reminder_task(pool: sqlx::PgPool, key_data: KeyData, http: Arc<serenity::http::Http>) {
+    let mut interval = time::interval(Duration::from_millis(10000));
+
+    loop {
+        interval.tick().await;
+        debug!("Called VRTask"); // TODO: Remove this
+
+        let rows = sqlx::query!(
+            "SELECT user_id, vote_reminders, vote_reminder_channel FROM users 
+            WHERE cardinality(vote_reminders) > 0 
+            AND NOW() - vote_reminders_last_acked > interval '4 hours'"
+        )
+        .fetch_all(&pool)
+        .await;
+
+        if rows.is_err() {
+            error!("{}", rows.err().unwrap());
+            continue;
+        }
+
+        let rows = rows.unwrap();
+
+        for row in rows {
+            // If a user can't vote for one bot, they can't vote for any
+            let count = sqlx::query!(
+                "SELECT COUNT(1) FROM user_vote_table WHERE user_id = $1",
+                row.user_id
+            )
+            .fetch_one(&pool)
+            .await;
+
+            if count.is_err() {
+                continue
+            } else if count.unwrap().count.unwrap_or_default() > 0 {
+                continue
+            }
+
+            let mut channel: serenity::model::id::ChannelId = key_data.channels.vote_reminder_channel;
+            if row.vote_reminder_channel.is_some() {
+                channel = serenity::model::id::ChannelId(row.vote_reminder_channel.unwrap().try_into().unwrap_or(key_data.channels.vote_reminder_channel.0));
+            }
+
+            // The hard part, bot string creation
+
+            let mut bots_str: String = "".to_string();
+
+            // tlen contains the total length of the vote reminders
+            // If tlen is one and was always one then we don't need to add a comma
+            let tlen_initial = row.vote_reminders.len();
+            let mut tlen = row.vote_reminders.len();
+
+            for bot in &row.vote_reminders {
+                let mut mod_front = "";
+                if tlen_initial > 1 && tlen == 1 {
+                    // We have more than one bot, but we're at the last one
+                    mod_front = " and ";
+                } else if tlen_initial > 1 && tlen > 1 {
+                    // We have more than one bot, and we're not at the last one
+                    mod_front = ", ";
+                }
+
+                bots_str += format!("{mod_front}<@{bot}> ({bot})", bot = bot, mod_front = mod_front).as_str();
+
+                tlen -= 1;
+            }
+
+            // Now actually send the message
+            let res = channel.send_message(http.clone(), |m| {
+
+                m.content(
+                    format!(
+                        "Hey {user}, you can vote for {bots} or did you forget?",
+                        user = serenity::model::id::UserId(row.user_id as u64).mention(),
+                        bots = bots_str
+                    ));
+
+                m
+            })
+            .await;
+
+            if res.is_err() {
+                error!("Message send error: {}", res.err().unwrap());
+            }
+
+            debug!("User {} with bots {:?}", row.user_id, row.vote_reminders);
+
+            // Reack
+            let reack = sqlx::query!(
+                "UPDATE users SET vote_reminders_last_acked = NOW() WHERE user_id = $1",
+                row.user_id
+            )
+            .execute(&pool)
+            .await;
+
+            if reack.is_err() {
+                error!("Reack error: {}", reack.err().unwrap());
+            }
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     const MAX_CONNECTIONS: u32 = 3; // max connections to the database, we don't need too many here
@@ -331,6 +473,7 @@ async fn main() {
                 .connect("postgres://localhost/fateslist")
                 .await
                 .expect("Could not initialize connection"),
+                key_data: get_key_data(),
                 client,
             })
         }))

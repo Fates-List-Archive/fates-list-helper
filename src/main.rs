@@ -104,6 +104,14 @@ async fn vote(
     Ok(())
 }
 
+/// Information on our new server list
+#[poise::command(prefix_command, track_edits, slash_command)]
+async fn serverlist(ctx: Context<'_>)  -> Result<(), Error> {
+    ctx.say("Please consider trying out ``Fates List Server Listing`` at https://fateslist.xyz/frostpaw/add-server!").await?;
+
+    Ok(())
+}
+
 /// Show this help menu
 #[poise::command(prefix_command, track_edits, slash_command)]
 async fn help(
@@ -140,6 +148,51 @@ async fn about(ctx: Context<'_>) -> Result<(), Error> {
         hash = String::from_utf8(git_commit_hash.unwrap().stdout).unwrap_or_else(|_| "Unknown (utf8 parse failure)".to_string());
     }
     ctx.say(format!("Squirrelflight v0.1.0\n\n**Commit Hash:** {}", hash)).await?;
+    Ok(())
+}
+
+/// See the bot queue so you know exactly where you're bot is!
+#[poise::command(prefix_command, slash_command, track_edits)]
+async fn queue(ctx: Context<'_>) -> Result<(), Error> {
+    let data = ctx.data();
+
+    let rows = sqlx::query!(
+        "SELECT username_cached, bot_id, description FROM bots WHERE state = 1 ORDER BY created_at ASC",
+    )
+    .fetch_all(&data.pool)
+    .await;
+
+    if rows.is_err() {
+        ctx.say("There was an error fetching the queue. Please try again later.").await?;
+        return Ok(());
+    }
+
+    let rows = rows.unwrap();
+
+    let mut desc = "*Does not take into account bots that are currently under review*\n".to_string();
+
+    let mut i = 1;
+
+    for row in rows {
+        let mut name = row.username_cached.unwrap_or_else(|| "Username not cached".to_string());
+        if name.is_empty() {
+            name = "Username not cached".to_string();
+        }
+
+        desc += format!("\n**{i}. {name}** - [View On Site](https://fateslist.xyz/bot/{invite})\n{desc}", i=i, name=name, invite=row.bot_id, desc=row.description.unwrap_or_default()).as_str();
+    
+        i += 1;
+    }
+
+    desc += "\n\n**Note to staff: Always see site pages before approving or even testing a bot!**";
+
+    ctx.send(|m| {
+        m.embed(|e| {
+            e.title("**Bot Queue**");
+            e.description(desc)
+        })
+    }).await?;
+
     Ok(())
 }
 
@@ -499,7 +552,7 @@ async fn main() {
             listener: |ctx, event, framework, user_data| { 
                 Box::pin(event_listener(ctx, event, framework, user_data))
             },
-            commands: vec![accage(), vote(), help(), register(), about()],
+            commands: vec![accage(), vote(), help(), register(), about(), queue(), serverlist()],
             ..poise::FrameworkOptions::default()
         })
         .run().await.unwrap();

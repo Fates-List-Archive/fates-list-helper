@@ -6,13 +6,16 @@ use std::fs::File;
 use std::io::Read;
 use std::env;
 use std::path::PathBuf;
-use serde::Deserialize;
+use serde::{Serialize, Deserialize};
 use sqlx::postgres::PgPoolOptions;
 use std::process::Command;
 use std::time::Duration;
 use tokio::{task, time};
 use std::sync::Arc;
 use poise::serenity_prelude::Mentionable;
+use async_tungstenite::{tokio::connect_async, tungstenite::Message, tungstenite::protocol::CloseFrame, tungstenite::protocol::frame::coding::CloseCode, tungstenite::client::IntoClientRequest};
+use poise::futures_util::StreamExt;
+use poise::futures_util::SinkExt;
 
 struct Data {pool: sqlx::PgPool, client: reqwest::Client, key_data: KeyData}
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -104,12 +107,337 @@ async fn vote(
     Ok(())
 }
 
-/// Information on our new server list
+/// Information on our new server list.
 #[poise::command(prefix_command, track_edits, slash_command)]
 async fn serverlist(ctx: Context<'_>)  -> Result<(), Error> {
     ctx.say("Please consider trying out ``Fates List Server Listing`` at https://fateslist.xyz/frostpaw/add-server!").await?;
 
     Ok(())
+}
+
+#[derive(poise::ChoiceParameter)]
+enum LynxActionType {
+    #[name = "bot"] 
+    Bot,
+    #[name = "user"] 
+    User,
+}
+
+#[derive(poise::ChoiceParameter, Debug)]
+enum LynxAction {
+    #[name = "Claim"] 
+    Claim,
+    #[name = "Unclaim"] 
+    Unclaim,
+    #[name = "Approve"]
+    Approve,
+    #[name = "Deny"]
+    Deny,
+    #[name = "Requeue"]
+    Requeue,
+    #[name = "Unverify"]
+    Unverify,
+    #[name = "Ban"]
+    Ban,
+    #[name = "Unban"]
+    Unban,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+enum LynxPayload {
+    RespError {
+        resp: String,
+        detail: String,
+    },
+    RespWithScript {
+        resp: String,
+        script: String
+    },
+    PlainResp {
+        resp: String,
+    },
+    DetailOnly {
+        detail: String
+    },
+    // Internal parse error
+    InternalParseError {
+        error: String,
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct LynxActionData {
+    bot_id: Option<String>,
+    user_id: Option<String>,
+    reason: String,
+    csrf_token: String,
+    context: Option<String>
+}
+
+#[derive(Serialize, Deserialize)]
+struct LynxPayloadSend {
+    request: String,
+    action: String,
+    action_data: LynxActionData,
+}
+
+/// Lynx Bridge. STAFF ONLY
+#[poise::command(prefix_command, track_edits, slash_command)]
+async fn lynx(
+    ctx: Context<'_>,
+    #[description = "Action type"]
+    action_type: LynxActionType,
+    #[description = "Action on Lynx"]
+    action: LynxAction,
+    #[description = "ID"]
+    id: String,
+    #[description = "Reason"]
+    reason: String,
+)  -> Result<(), Error> {
+
+    let id_i64 = id.parse::<i64>();
+
+    if id_i64.is_err() {
+        ctx.say("ID must be a i64").await?;
+        return Ok(())
+    }
+
+    let data = ctx.data();
+
+    let row = sqlx::query!(
+        "SELECT api_token FROM users WHERE user_id = $1",
+        ctx.author().id.0 as i64
+    )
+    .fetch_one(&data.pool)
+    .await;
+
+    if row.is_err() {
+        ctx.say("Unauthorized").await?;
+        return Ok(());
+    }
+
+    let api_token = row.unwrap().api_token;
+
+    // Now create WS connection
+    let lynx_json = serde_json::json!({
+        "user": {
+            "id": ctx.author().id.0.to_string(),
+            "username": "Squirrelflight-Virtual",
+            "disc": "0000",
+            "avatar": "https://cdn.discordapp.com/avatars/723456789012345678/723456789012345678.png?size=1024",
+            "bot": false,
+            "status": "Unknown",
+        },
+        "token": api_token,
+    });
+
+    let lynx_json_val = serde_json::to_string(&lynx_json).unwrap();
+    let lynx_json_b64 = base64::encode(lynx_json_val);
+
+    ctx.say("[DEBUG] Connecting to Lynx...").await?;
+
+    let mut req = "wss://lynx.fateslist.xyz/_ws".into_client_request()?;
+    req.headers_mut().insert("Origin", "https://lynx.fateslist.xyz".parse().unwrap());
+    req.headers_mut().insert("User-Agent", "Squirrelflight/0.1".parse().unwrap());
+    req.headers_mut().insert("Cookie", format!("sunbeam-session:warriorcats={}", lynx_json_b64).parse().unwrap());
+    
+    let (ws_stream, _) = connect_async(req).await?;
+
+    let (mut write, mut read) = ws_stream.split();
+
+    let first = read.next().await;
+
+    if first.is_none() {
+        ctx.say("[ERROR] Failed to connect to Lynx").await?;
+        return Ok(());
+    }
+
+    let action_str = match action_type {
+        LynxActionType::Bot => "bot_actions",
+        LynxActionType::User => "user_actions",
+    };
+
+    // Send message
+    ctx.say(format!("[DEBUG] Requesting for page {} for CSRF validation", action_str)).await?;
+
+
+    // No need to keep recreating this string
+    let actions_msg = match action_type {
+        LynxActionType::Bot => "{\"request\":\"bot_actions\"}".to_string(),
+        LynxActionType::User => "{\"request\":\"user_actions\"}".to_string(),
+    };
+    write.send(Message::Text(actions_msg)).await?;
+
+    let script_data: String;
+
+    loop {
+        let msg = read.next().await;
+
+        if msg.is_none() {
+            continue;
+        }
+        let msg = msg.unwrap();
+        if msg.is_err() {
+            // Close the conn
+            ctx.say("[ERROR] Lynx connection closed (reason=ErrWsMsg)...").await?;
+            write.send(Message::Close(Some(CloseFrame {
+                code: CloseCode::Normal,
+                reason: "Squirrelflight Command Error".into(),
+            }))).await?;
+            return Ok(())
+        }
+
+        let msg = msg.unwrap();
+
+        let csrf_msg = match msg {
+            Message::Text(msg) => msg,
+            Message::Ping(_) => {
+                write.send(Message::Pong(Vec::new())).await?;
+                continue;
+            },
+            _ => continue,
+        };
+
+        // Serde serialize
+        let data: LynxPayload = serde_json::from_str(&csrf_msg).unwrap_or_else(|err| {
+            LynxPayload::InternalParseError {
+                error: format!("{:?}", err),
+            }
+        });
+
+        match data {
+            LynxPayload::RespError { resp, detail } => {
+                ctx.say(format!("[ERROR] Failed to connect to Lynx. Error was {:?} with resp {:?}", detail, resp)).await?;
+                write.send(Message::Close(Some(CloseFrame {
+                    code: CloseCode::Normal,
+                    reason: "Squirrelflight Command Done".into(),
+                }))).await?;            
+                return Ok(())
+            },
+            LynxPayload::RespWithScript { resp, script } => {
+                if resp == action_str.to_string() {
+                    ctx.say(format!("[DEBUG] Got {} response", action_str)).await?;
+                    script_data = script;
+                    break                
+                }
+                continue
+            },
+            LynxPayload::PlainResp {resp: _} => {
+                continue
+            },
+            LynxPayload::DetailOnly { detail: _ } => {
+                continue
+            },
+            LynxPayload::InternalParseError { error } => {
+                ctx.say(format!("[ERROR] Failed to parse JSON: {:?} with original JSON of {:?}", error, csrf_msg)).await?;
+                write.send(Message::Close(Some(CloseFrame {
+                    code: CloseCode::Normal,
+                    reason: "Squirrelflight Command Done".into(),
+                }))).await?;            
+                return Ok(())
+            },
+        }
+    }
+
+    let csrf_token = script_data.split("csrfToken").nth(1).unwrap_or_default();
+
+    let csrf_token = csrf_token.split("\"").nth(1).unwrap().replace("\\", "");
+
+    // Send csrfToken
+    ctx.say(format!("Sending request for action {:?} with csrf token of {:?}", action, csrf_token)).await?;
+    debug!("{:?}", csrf_token);
+
+    let action_type_send = match action_type {
+        LynxActionType::Bot => "bot_action".to_string(),
+        LynxActionType::User => "user_action".to_string(),
+    };
+
+    let action_str = match action {
+        LynxAction::Claim => "claim",
+        LynxAction::Unclaim => "unclaim",
+        LynxAction::Approve => "approve",
+        LynxAction::Deny => "deny",
+        LynxAction::Requeue => "requeue",
+        LynxAction::Unverify => "unverify",
+        LynxAction::Ban => "ban",
+        LynxAction::Unban => "unban",
+    };
+
+    let mut action_dat = LynxPayloadSend {
+        request: action_type_send.clone(),
+        action: action_str.to_string(),
+        action_data: LynxActionData {
+            bot_id: None,
+            user_id: None,
+            context: None,
+            reason,
+            csrf_token,
+        },
+    };
+
+    match action_type {
+        LynxActionType::Bot => {
+            action_dat.action_data.bot_id = Some(id);
+        },
+        LynxActionType::User => {
+            action_dat.action_data.user_id = Some(id);
+        },
+    }
+
+    // JSON serialize and send, then wait for next event
+    write.send(Message::Text(serde_json::to_string(&action_dat).unwrap())).await?;
+
+    loop {
+        let msg = read.next().await;
+
+        if msg.is_none() {
+            continue;
+        }
+        let msg = msg.unwrap();
+        if msg.is_err() {
+            // Close the conn
+            ctx.say("[ERROR] Lynx connection closed (reason=ErrWsMsg)...").await?;
+            write.send(Message::Close(Some(CloseFrame {
+                code: CloseCode::Normal,
+                reason: "Squirrelflight Command Error".into(),
+            }))).await?;
+            return Ok(())
+        }
+
+        let msg = msg.unwrap();
+
+        let resp_msg = match msg {
+            Message::Text(msg) => msg,
+            Message::Ping(_) => {
+                write.send(Message::Pong(Vec::new())).await?;
+                continue;
+            },
+            _ => continue,
+        };
+
+        // Serde serialize
+        let data: LynxPayload = serde_json::from_str(&resp_msg).unwrap_or_else(|err| {
+            LynxPayload::InternalParseError {
+                error: format!("{:?}", err),
+            }
+        });
+        
+        match data {
+            LynxPayload::RespError {resp, detail} => {
+                if resp != action_type_send {
+                    continue
+                }
+                ctx.say(format!("[RESPONSE] {:?}", detail)).await?;
+                write.send(Message::Close(Some(CloseFrame {
+                    code: CloseCode::Normal,
+                    reason: "Squirrelflight Command Done".into(),
+                }))).await?;            
+                return Ok(())
+            },
+            _ => continue
+        }
+    }
 }
 
 /// Show this help menu
@@ -269,6 +597,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
         poise::FrameworkError::Setup { error } => panic!("Failed to start bot: {:?}", error),
         poise::FrameworkError::Command { error, ctx } => {
             error!("Error in command `{}`: {:?}", ctx.command().name, error,);
+            ctx.say(format!("There was an error running this command: {:?}", error)).await.unwrap();
         }
         error => {
             if let Err(e) = poise::builtins::on_error(error).await {
@@ -552,7 +881,7 @@ async fn main() {
             listener: |ctx, event, framework, user_data| { 
                 Box::pin(event_listener(ctx, event, framework, user_data))
             },
-            commands: vec![accage(), vote(), help(), register(), about(), queue(), serverlist()],
+            commands: vec![accage(), vote(), help(), register(), about(), queue(), serverlist(), lynx()],
             ..poise::FrameworkOptions::default()
         })
         .run().await.unwrap();

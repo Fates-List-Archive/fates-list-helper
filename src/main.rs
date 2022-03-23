@@ -115,6 +115,93 @@ async fn serverlist(ctx: Context<'_>)  -> Result<(), Error> {
     Ok(())
 }
 
+async fn autocomplete_vr(
+    ctx: Context<'_>,
+    _partial: String
+) -> Vec<poise::AutocompleteChoice<String>> {
+    let data = ctx.data();
+
+    let row = sqlx::query!(
+        "SELECT vote_reminders FROM users WHERE user_id = $1",
+        ctx.author().id.0 as i64
+        )
+        .fetch_one(&data.pool)
+        .await;
+
+    if row.is_err() {
+        return Vec::new();
+    }
+
+    let row = row.unwrap();
+
+    let mut choices = Vec::new();
+    for choice in row.vote_reminders {
+        choices.push(poise::AutocompleteChoice {
+            name: choice.to_string(),
+            value: choice.to_string(),
+        });
+    }
+
+    choices
+}
+
+/// Disable vote reminders for a bot
+#[poise::command(
+    prefix_command, 
+    track_edits, 
+    slash_command
+)]
+async fn disablevr(
+    ctx: Context<'_>,
+    #[description = "Bot ID to disable vote reminders for"]
+    #[autocomplete = "autocomplete_vr"]
+    bot_id: Option<String>,
+)  -> Result<(), Error> {
+
+    let data = ctx.data();
+
+    if bot_id.is_none() {
+        let row = sqlx::query!(
+            "SELECT vote_reminders FROM users WHERE user_id = $1",
+            ctx.author().id.0 as i64
+            )
+            .fetch_one(&data.pool)
+            .await;
+
+        
+        let mut text = "Vote reminders enabled: ".to_string();
+
+        for choice in row.unwrap().vote_reminders {
+            text += &(choice.to_string() + ", ");
+        }
+    
+        ctx.say(text).await?;
+    } else {
+        let bot_id = bot_id.unwrap();
+
+        let bot_id = bot_id.parse::<i64>();
+
+        if bot_id.is_err() {
+            ctx.say("Bot id must be a i64").await?;
+            return Ok(());
+        }
+
+        let bot_id = bot_id.unwrap();
+
+        sqlx::query!(
+            "UPDATE users SET vote_reminders = array_remove(vote_reminders, $1) WHERE user_id = $2",
+            bot_id,
+            ctx.author().id.0 as i64
+        )
+        .execute(&data.pool)
+        .await?;
+
+        ctx.say(format!("Vote reminders disabled for {}", bot_id)).await?;
+    }
+
+    Ok(())
+}
+
 #[derive(poise::ChoiceParameter)]
 enum LynxActionType {
     #[name = "bot"] 
@@ -316,7 +403,7 @@ async fn lynx(
                 return Ok(())
             },
             LynxPayload::RespWithScript { resp, script } => {
-                if resp == action_str.to_string() {
+                if resp == *action_str {
                     ctx.say(format!("[DEBUG] Got {} response", action_str)).await?;
                     script_data = script;
                     break                
@@ -342,7 +429,7 @@ async fn lynx(
 
     let csrf_token = script_data.split("csrfToken").nth(1).unwrap_or_default();
 
-    let csrf_token = csrf_token.split("\"").nth(1).unwrap().replace("\\", "");
+    let csrf_token = csrf_token.split('\"').nth(1).unwrap().replace('\\', "");
 
     // Send csrfToken
     ctx.say(format!("Sending request for action {:?} with csrf token of {:?}", action, csrf_token)).await?;
@@ -468,13 +555,13 @@ async fn about(ctx: Context<'_>) -> Result<(), Error> {
     let git_commit_hash = Command::new("git")
     .args(["rev-parse", "HEAD"]).output();
 
-    let hash: String;
 
-    if git_commit_hash.is_err() {
-        hash = "Unknown".to_string();
+    let hash = if git_commit_hash.is_err() {
+        "Unknown".to_string()
     } else {
-        hash = String::from_utf8(git_commit_hash.unwrap().stdout).unwrap_or_else(|_| "Unknown (utf8 parse failure)".to_string());
-    }
+        String::from_utf8(git_commit_hash.unwrap().stdout).unwrap_or_else(|_| "Unknown (utf8 parse failure)".to_string())
+    };
+
     ctx.say(format!("Squirrelflight v0.1.0\n\n**Commit Hash:** {}", hash)).await?;
     Ok(())
 }
@@ -763,9 +850,7 @@ async fn vote_reminder_task(pool: sqlx::PgPool, key_data: KeyData, http: Arc<ser
             .fetch_one(&pool)
             .await;
 
-            if count.is_err() {
-                continue
-            } else if count.unwrap().count.unwrap_or_default() > 0 {
+            if count.is_err() || count.unwrap().count.unwrap_or_default() > 0 {
                 continue
             }
 
@@ -881,7 +966,7 @@ async fn main() {
             listener: |ctx, event, framework, user_data| { 
                 Box::pin(event_listener(ctx, event, framework, user_data))
             },
-            commands: vec![accage(), vote(), help(), register(), about(), queue(), serverlist(), lynx()],
+            commands: vec![accage(), vote(), help(), register(), about(), queue(), serverlist(), lynx(), disablevr()],
             ..poise::FrameworkOptions::default()
         })
         .run().await.unwrap();

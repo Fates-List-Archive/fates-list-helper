@@ -1,5 +1,3 @@
-#![feature(async_closure)]
-
 use poise::serenity_prelude as serenity;
 use log::{debug, info, error};
 use std::fs::File;
@@ -432,7 +430,7 @@ async fn lynx(
     let csrf_token = csrf_token.split('\"').nth(1).unwrap().replace('\\', "");
 
     // Send csrfToken
-    ctx.say(format!("Sending request for action {:?} with csrf token of {:?}", action, csrf_token)).await?;
+    ctx.say(format!("[DEBUG] Sending request for action {:?} with csrf token of {:?}", action, csrf_token)).await?;
     debug!("{:?}", csrf_token);
 
     let action_type_send = match action_type {
@@ -876,6 +874,11 @@ async fn vote_reminder_task(pool: sqlx::PgPool, key_data: KeyData, http: Arc<ser
                 } else if tlen_initial > 1 && tlen > 1 {
                     // We have more than one bot, and we're not at the last one
                     mod_front = ", ";
+                }
+
+                if tlen == tlen_initial {
+                    // At first bot, do nothing with mod_front
+                    mod_front = "";
                 }
 
                 bots_str += format!("{mod_front}<@{bot}> ({bot})", bot = bot, mod_front = mod_front).as_str();

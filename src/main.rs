@@ -14,6 +14,9 @@ use poise::serenity_prelude::Mentionable;
 use async_tungstenite::{tokio::connect_async, tungstenite::Message, tungstenite::protocol::CloseFrame, tungstenite::protocol::frame::coding::CloseCode, tungstenite::client::IntoClientRequest};
 use poise::futures_util::StreamExt;
 use poise::futures_util::SinkExt;
+use bigdecimal::BigDecimal;
+use bigdecimal::FromPrimitive;
+use bigdecimal::ToPrimitive;
 
 struct Data {pool: sqlx::PgPool, client: reqwest::Client, key_data: KeyData}
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -841,14 +844,25 @@ async fn vote_reminder_task(pool: sqlx::PgPool, key_data: KeyData, http: Arc<ser
 
         for row in rows {
             // If a user can't vote for one bot, they can't vote for any
-            let count = sqlx::query!(
-                "SELECT COUNT(1) FROM user_vote_table WHERE user_id = $1",
+            let voted = sqlx::query!(
+                "SELECT extract(epoch from expires_on) AS expiry FROM user_vote_table WHERE user_id = $1",
                 row.user_id
             )
             .fetch_one(&pool)
             .await;
 
-            if count.is_err() || count.unwrap().count.unwrap_or_default() > 0 {
+            let expiry = match voted {
+                Ok(voted) => {
+                    voted.expiry.unwrap_or_default()
+                },
+                Err(_) => {
+                    BigDecimal::from_u64(0).unwrap_or_default()
+                }
+            }.to_u64().unwrap_or_default();
+
+            let now = chrono::Utc::now().timestamp() as u64; 
+
+            if expiry > now {
                 continue
             }
 

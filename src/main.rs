@@ -146,6 +146,47 @@ async fn autocomplete_vr(
     choices
 }
 
+/// Set the channel to send vote reminders to.
+#[poise::command(
+    prefix_command, 
+    track_edits, 
+    slash_command
+)]
+async fn vrchannel(
+    ctx: Context<'_>,
+    #[description = "Channel to send vote reminders to"]
+    channel: serenity::Channel,
+)  -> Result<(), Error> {
+    match channel.clone() {
+        serenity::Channel::Guild(guild_channel) => {
+            match guild_channel.kind {
+                serenity::ChannelType::Voice | serenity::ChannelType::Stage | serenity::ChannelType::Category | serenity::ChannelType::Unknown => {
+                    ctx.say("You can only set vote reminder channel to a text channel!").await?;
+                    return Ok(());
+                },
+                _ => ()
+            }
+        },
+        serenity::Channel::Private(_) => (),
+        _ => {
+            ctx.say("You can only set vote reminders to a guild channel!").await?;
+            return Ok(());
+        }
+    }
+
+    sqlx::query!(
+        "UPDATE users SET vote_reminder_channel = $1 WHERE user_id = $2",
+        channel.id().0 as i64,
+        ctx.author().id.0 as i64
+    )
+    .execute(&ctx.data().pool)
+    .await?;
+
+    ctx.say(format!("Vote reminders will now be sent to {}", channel.mention())).await?;
+
+    Ok(())
+}
+
 /// Disable vote reminders for a bot
 #[poise::command(
     prefix_command, 
@@ -983,7 +1024,7 @@ async fn main() {
             listener: |ctx, event, framework, user_data| { 
                 Box::pin(event_listener(ctx, event, framework, user_data))
             },
-            commands: vec![accage(), vote(), help(), register(), about(), queue(), serverlist(), lynx(), disablevr()],
+            commands: vec![accage(), vote(), help(), register(), about(), queue(), serverlist(), lynx(), disablevr(), vrchannel()],
             ..poise::FrameworkOptions::default()
         })
         .run().await.unwrap();

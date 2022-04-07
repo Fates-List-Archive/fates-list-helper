@@ -300,7 +300,6 @@ struct LynxActionData {
     bot_id: Option<String>,
     user_id: Option<String>,
     reason: String,
-    csrf_token: String,
     context: Option<String>
 }
 
@@ -366,7 +365,13 @@ async fn lynx(
 
     ctx.say("[DEBUG] Connecting to Lynx...").await?;
 
-    let mut req = "wss://lynx.fateslist.xyz/_ws".into_client_request()?;
+    let mut req = "wss://lynx.fateslist.xyz/_ws?debug=true".into_client_request()?;
+    *req.uri_mut() = http::Uri::builder()
+        .scheme("wss")
+        .authority("lynx.fateslist.xyz")
+        .path_and_query("/_ws?debug=true")
+        .build()
+        .unwrap();
     req.headers_mut().insert("Origin", "https://lynx.fateslist.xyz".parse().unwrap());
     req.headers_mut().insert("User-Agent", "Squirrelflight/0.1".parse().unwrap());
     req.headers_mut().insert("Cookie", format!("sunbeam-session:warriorcats={}", lynx_json_b64).parse().unwrap());
@@ -382,100 +387,8 @@ async fn lynx(
         return Ok(());
     }
 
-    let action_str = match action_type {
-        LynxActionType::Bot => "bot_actions",
-        LynxActionType::User => "user_actions",
-    };
-
-    // Send message
-    ctx.say(format!("[DEBUG] Requesting for page {} for CSRF validation", action_str)).await?;
-
-
-    // No need to keep recreating this string
-    let actions_msg = match action_type {
-        LynxActionType::Bot => "{\"request\":\"bot_actions\"}".to_string(),
-        LynxActionType::User => "{\"request\":\"user_actions\"}".to_string(),
-    };
-    write.send(Message::Text(actions_msg)).await?;
-
-    let script_data: String;
-
-    loop {
-        let msg = read.next().await;
-
-        if msg.is_none() {
-            continue;
-        }
-        let msg = msg.unwrap();
-        if msg.is_err() {
-            // Close the conn
-            ctx.say("[ERROR] Lynx connection closed (reason=ErrWsMsg)...").await?;
-            write.send(Message::Close(Some(CloseFrame {
-                code: CloseCode::Normal,
-                reason: "Squirrelflight Command Error".into(),
-            }))).await?;
-            return Ok(())
-        }
-
-        let msg = msg.unwrap();
-
-        let csrf_msg = match msg {
-            Message::Text(msg) => msg,
-            Message::Ping(_) => {
-                write.send(Message::Pong(Vec::new())).await?;
-                continue;
-            },
-            _ => continue,
-        };
-
-        // Serde serialize
-        let data: LynxPayload = serde_json::from_str(&csrf_msg).unwrap_or_else(|err| {
-            LynxPayload::InternalParseError {
-                error: format!("{:?}", err),
-            }
-        });
-
-        match data {
-            LynxPayload::RespError { resp, detail } => {
-                ctx.say(format!("[ERROR] Failed to connect to Lynx. Error was {:?} with resp {:?}", detail, resp)).await?;
-                write.send(Message::Close(Some(CloseFrame {
-                    code: CloseCode::Normal,
-                    reason: "Squirrelflight Command Done".into(),
-                }))).await?;            
-                return Ok(())
-            },
-            LynxPayload::RespWithScript { resp, script } => {
-                if resp == *action_str {
-                    ctx.say(format!("[DEBUG] Got {} response", action_str)).await?;
-                    script_data = script;
-                    break                
-                }
-                continue
-            },
-            LynxPayload::PlainResp {resp: _} => {
-                continue
-            },
-            LynxPayload::DetailOnly { detail: _ } => {
-                continue
-            },
-            LynxPayload::InternalParseError { error } => {
-                ctx.say(format!("[ERROR] Failed to parse JSON: {:?} with original JSON of {:?}", error, csrf_msg)).await?;
-                write.send(Message::Close(Some(CloseFrame {
-                    code: CloseCode::Normal,
-                    reason: "Squirrelflight Command Done".into(),
-                }))).await?;            
-                return Ok(())
-            },
-        }
-    }
-
-    let csrf_token = script_data.split("csrfToken").nth(1).unwrap_or_default();
-
-    let csrf_token = csrf_token.split('\"').nth(1).unwrap().replace('\\', "");
-
-    // Send csrfToken
-    ctx.say(format!("[DEBUG] Sending request for action {:?} with csrf token of {:?}", action, csrf_token)).await?;
-    debug!("{:?}", csrf_token);
+    // Send action
+    ctx.say(format!("[DEBUG] Sending request for action {:?}", action)).await?;
 
     let action_type_send = match action_type {
         LynxActionType::Bot => "bot_action".to_string(),
@@ -501,7 +414,6 @@ async fn lynx(
             user_id: None,
             context: None,
             reason,
-            csrf_token,
         },
     };
 

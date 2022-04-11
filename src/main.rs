@@ -365,11 +365,11 @@ async fn lynx(
 
     ctx.say("[DEBUG] Connecting to Lynx...").await?;
 
-    let mut req = "wss://lynx.fateslist.xyz/_ws?debug=true".into_client_request()?;
+    let mut req = "wss://lynx.fateslist.xyz/_ws?cli=BurdockRoot%40NODBG&plat=SQUIRREL".into_client_request()?;
     *req.uri_mut() = http::Uri::builder()
         .scheme("wss")
         .authority("lynx.fateslist.xyz")
-        .path_and_query("/_ws?debug=true")
+        .path_and_query("/_ws?cli=BurdockRoot%40NODBG&plat=SQUIRREL")
         .build()
         .unwrap();
     req.headers_mut().insert("Origin", "https://lynx.fateslist.xyz".parse().unwrap());
@@ -473,7 +473,7 @@ async fn lynx(
                 write.send(Message::Close(Some(CloseFrame {
                     code: CloseCode::Normal,
                     reason: "Squirrelflight Command Done".into(),
-                }))).await?;            
+                }))).await?; 
                 return Ok(())
             },
             _ => continue

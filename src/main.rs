@@ -41,10 +41,13 @@ async fn accage(
 }
 
 /// Test guild member count
-#[poise::command(slash_command, guild_only)]
+#[poise::command(slash_command, guild_only, guild_cooldown = 5)]
 async fn test_mc(ctx: Context<'_>) -> Result<(), Error> {
     let guild = ctx.guild().unwrap();
-    let member_count = guild.member_count;
+
+    let guild_with_mc = ctx.discord().http.get_guild_with_counts(guild.id.0).await?;
+
+    let member_count = guild_with_mc.approximate_member_count.unwrap_or(guild.member_count);
     ctx.say(format!("{}", member_count)).await.unwrap();
     Ok(())
 }

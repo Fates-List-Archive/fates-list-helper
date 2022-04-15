@@ -605,7 +605,7 @@ fn create_token(length: usize) -> String {
 }
 
 /// Sets a field
-#[poise::command(prefix_command, track_edits, slash_command, guild_cooldown = 5, required_permissions = "MANAGE_GUILD")]
+#[poise::command(prefix_command, track_edits, slash_command, guild_cooldown = 5, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn set(
     ctx: Context<'_>,
     #[description = "Field to set"]
@@ -613,12 +613,7 @@ pub async fn set(
     #[description = "(Raw) Value to set field to. 'none' to reset"]
     value: String,
 ) -> Result<(), Error> {
-    let guild = ctx.guild();
-
-    if guild.is_none() {
-        ctx.say("You must be in a server to use this command").await?;
-        return Ok(());
-    }
+    let guild = ctx.guild().unwrap();
 
     let member = ctx.author_member().await;
 
@@ -633,11 +628,13 @@ pub async fn set(
         value = "".to_string();
     }
 
-    let guild = guild.unwrap();    
-
     let data = ctx.data();
 
     // Update server details
+    let guild_with_mc = ctx.discord().http.get_guild_with_counts(guild.id.0).await?;
+
+    let member_count = guild_with_mc.approximate_member_count.unwrap_or(guild.member_count);
+
     sqlx::query!(
         "INSERT INTO servers (guild_id, owner_id, name_cached, avatar_cached, api_token, guild_count, nsfw) VALUES ($1, $2, $3, $4, $5, $6, $7) 
         ON CONFLICT (guild_id) DO UPDATE SET owner_id = excluded.owner_id, name_cached = excluded.name_cached, 
@@ -648,7 +645,7 @@ pub async fn set(
         guild.name.to_string(),
         guild.icon_url().unwrap_or_else(|| "https://api.fateslist.xyz/static/botlisticon.webp".to_string()),
         create_token(128),
-        guild.member_count as i64,
+        member_count as i64,
         guild.nsfw_level == serenity::NsfwLevel::Explicit || guild.nsfw_level == serenity::NsfwLevel::AgeRestricted
     )
     .execute(&data.pool)

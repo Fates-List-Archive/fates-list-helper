@@ -49,12 +49,80 @@ async fn test_mc(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Votes for current server
+#[poise::command(slash_command, guild_only)]
+async fn voteserver(
+    ctx: Context<'_>,
+) -> Result<(), Error> {
+    let data = ctx.data();
+    let guild = ctx.guild().unwrap();
+
+    let row = sqlx::query!(
+        "SELECT api_token FROM users WHERE user_id = $1",
+        ctx.author().id.0 as i64
+    )
+    .fetch_one(&data.pool)
+    .await;
+
+    if row.is_err() {
+        ctx.say("You need to login to the site first!").await?;
+        return Ok(());
+    }
+
+    let token = row.unwrap().api_token;
+
+    let req = data.client.patch(
+        format!("https://api.fateslist.xyz/users/{}/servers/{}/votes?test=false", ctx.author().id, guild.id)
+    )
+    .header("Authorization", token)
+    .send()
+    .await;
+
+    if req.is_err() {
+        ctx.say("Failed to vote for the server. Please try again later.").await?;
+        return Ok(());
+    }
+
+    let resp = req.unwrap();
+
+    let status = resp.status();
+
+    let json = resp.json::<serde_json::Value>().await?;
+
+    if status == reqwest::StatusCode::OK {
+        ctx.send(|m| {
+            m.content(format!("You have successfully voted for {}", guild.name)).components(|c| {
+                c.create_action_row(|ar| {
+                    ar.create_button(|b| {
+                        b.style(serenity::ButtonStyle::Primary)
+                            .label("Toggle Vote Reminders!")
+                            .custom_id(format!("vrtoggle-{}-{}-servers", ctx.author().id, guild.id))
+                    })
+                })
+            })
+        }).await?;
+    } else {
+        ctx.send(|m| {
+            m.content(format!("**Error when voting for {}:** {}", guild.name, json["reason"].as_str().unwrap_or("Unknown error"))).components(|c| {
+                c.create_action_row(|ar| {
+                    ar.create_button(|b| {
+                        b.style(serenity::ButtonStyle::Primary)
+                            .label("Toggle Vote Reminders!")
+                            .custom_id(format!("vrtoggle-{}-{}-servers", ctx.author().id, guild.id))
+                    })
+                })
+            })
+        }).await?;
+    }
+
+    Ok(())
+}
+
 /// Votes for a bot. Takes a bot as its only parameter
 #[poise::command(slash_command, track_edits)]
 async fn vote(
     ctx: Context<'_>,
     #[description = "Bot to vote for"] bot: serenity::User,
-    #[description = "Bot or server"] vote_type: BotServer,
 ) -> Result<(), Error> {
     if !bot.bot {
         ctx.say(format!("{} is not a bot!", bot.name)).await?;
@@ -77,13 +145,8 @@ async fn vote(
 
     let token = row.unwrap().api_token;
 
-    let type_str = match vote_type {
-        BotServer::Bot => "bots".to_string(),
-        BotServer::Server => "servers".to_string(),
-    };
-
     let req = data.client.patch(
-        format!("https://api.fateslist.xyz/users/{}/{}/{}/votes?test=false", ctx.author().id, type_str, bot.id)
+        format!("https://api.fateslist.xyz/users/{}/bots/{}/votes?test=false", ctx.author().id, bot.id)
     )
     .header("Authorization", token)
     .send()
@@ -107,7 +170,7 @@ async fn vote(
                     ar.create_button(|b| {
                         b.style(serenity::ButtonStyle::Primary)
                             .label("Toggle Vote Reminders!")
-                            .custom_id(format!("vrtoggle-{}-{}-{}", ctx.author().id, bot.id, type_str))
+                            .custom_id(format!("vrtoggle-{}-{}-bots", ctx.author().id, bot.id))
                     })
                 })
             })
@@ -119,7 +182,7 @@ async fn vote(
                     ar.create_button(|b| {
                         b.style(serenity::ButtonStyle::Primary)
                             .label("Toggle Vote Reminders!")
-                            .custom_id(format!("vrtoggle-{}-{}-{}", ctx.author().id, bot.id, type_str))
+                            .custom_id(format!("vrtoggle-{}-{}-bots", ctx.author().id, bot.id))
                     })
                 })
             })
@@ -1196,6 +1259,7 @@ async fn main() {
             commands: vec![
                 accage(), 
                 vote(), 
+                voteserver(),
                 help(), 
                 register(), 
                 about(), 

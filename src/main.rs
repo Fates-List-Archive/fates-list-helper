@@ -1,3 +1,5 @@
+#![feature(derive_default_enum)]
+
 use poise::serenity_prelude as serenity;
 use log::{debug, info, error};
 use std::fs::File;
@@ -18,12 +20,16 @@ use bigdecimal::BigDecimal;
 use bigdecimal::FromPrimitive;
 use bigdecimal::ToPrimitive;
 
-struct Data {pool: sqlx::PgPool, client: reqwest::Client, key_data: KeyData}
+pub struct Data {pool: sqlx::PgPool, client: reqwest::Client, key_data: KeyData}
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
+mod helpers;
+mod serverlist;
+
+
 /// Display your or another user's account creation date. Is a test command
-#[poise::command(prefix_command, slash_command)]
+#[poise::command(slash_command)]
 async fn accage(
     ctx: Context<'_>,
     #[description = "Selected user"] user: Option<serenity::User>,
@@ -34,11 +40,21 @@ async fn accage(
     Ok(())
 }
 
+/// Test guild member count
+#[poise::command(slash_command, guild_only)]
+async fn test_mc(ctx: Context<'_>) -> Result<(), Error> {
+    let guild = ctx.guild().unwrap();
+    let member_count = guild.member_count;
+    ctx.say(format!("{}", member_count)).await.unwrap();
+    Ok(())
+}
+
 /// Votes for a bot. Takes a bot as its only parameter
-#[poise::command(prefix_command, slash_command, track_edits)]
+#[poise::command(slash_command, track_edits)]
 async fn vote(
     ctx: Context<'_>,
     #[description = "Bot to vote for"] bot: serenity::User,
+    #[description = "Bot or server"] vote_type: BotServer,
 ) -> Result<(), Error> {
     if !bot.bot {
         ctx.say(format!("{} is not a bot!", bot.name)).await?;
@@ -61,8 +77,13 @@ async fn vote(
 
     let token = row.unwrap().api_token;
 
+    let type_str = match vote_type {
+        BotServer::Bot => "bots".to_string(),
+        BotServer::Server => "servers".to_string(),
+    };
+
     let req = data.client.patch(
-        format!("https://api.fateslist.xyz/users/{}/bots/{}/votes?test=false", ctx.author().id, bot.id)
+        format!("https://api.fateslist.xyz/users/{}/{}/{}/votes?test=false", ctx.author().id, type_str, bot.id)
     )
     .header("Authorization", token)
     .send()
@@ -86,7 +107,7 @@ async fn vote(
                     ar.create_button(|b| {
                         b.style(serenity::ButtonStyle::Primary)
                             .label("Toggle Vote Reminders!")
-                            .custom_id(format!("vrtoggle-{}-{}", ctx.author().id, bot.id))
+                            .custom_id(format!("vrtoggle-{}-{}-{}", ctx.author().id, bot.id, type_str))
                     })
                 })
             })
@@ -98,7 +119,7 @@ async fn vote(
                     ar.create_button(|b| {
                         b.style(serenity::ButtonStyle::Primary)
                             .label("Toggle Vote Reminders!")
-                            .custom_id(format!("vrtoggle-{}-{}", ctx.author().id, bot.id))
+                            .custom_id(format!("vrtoggle-{}-{}-{}", ctx.author().id, bot.id, type_str))
                     })
                 })
             })
@@ -109,7 +130,7 @@ async fn vote(
 }
 
 /// Information on our new server list.
-#[poise::command(prefix_command, track_edits, slash_command)]
+#[poise::command(track_edits, slash_command)]
 async fn serverlist(ctx: Context<'_>)  -> Result<(), Error> {
     ctx.say("Please consider trying out ``Fates List Server Listing`` at https://fateslist.xyz/frostpaw/add-server!").await?;
 
@@ -146,9 +167,16 @@ async fn autocomplete_vr(
     choices
 }
 
+#[derive(poise::ChoiceParameter, PartialEq, Debug)]
+enum BotServer {
+    #[name = "bot"] 
+    Bot,
+    #[name = "server"] 
+    Server,
+}
+
 /// Set the channel to send vote reminders to.
 #[poise::command(
-    prefix_command, 
     track_edits, 
     slash_command
 )]
@@ -156,6 +184,8 @@ async fn vrchannel(
     ctx: Context<'_>,
     #[description = "Channel to send vote reminders to"]
     channel: serenity::Channel,
+    #[description = "Bot or server"]
+    vr_type: BotServer,
 )  -> Result<(), Error> {
     match channel.clone() {
         serenity::Channel::Guild(guild_channel) => {
@@ -174,13 +204,23 @@ async fn vrchannel(
         }
     }
 
-    sqlx::query!(
-        "UPDATE users SET vote_reminder_channel = $1 WHERE user_id = $2",
-        channel.id().0 as i64,
-        ctx.author().id.0 as i64
-    )
-    .execute(&ctx.data().pool)
-    .await?;
+    if vr_type == BotServer::Bot {
+        sqlx::query!(
+            "UPDATE users SET vote_reminder_channel = $1 WHERE user_id = $2",
+            channel.id().0 as i64,
+            ctx.author().id.0 as i64
+        )
+        .execute(&ctx.data().pool)
+        .await?;
+    } else {
+        sqlx::query!(
+            "UPDATE users SET vote_reminder_servers_channel = $1 WHERE user_id = $2",
+            channel.id().0 as i64,
+            ctx.author().id.0 as i64
+        )
+        .execute(&ctx.data().pool)
+        .await?;    
+    }
 
     ctx.say(format!("Vote reminders will now be sent to {}", channel.mention())).await?;
 
@@ -189,7 +229,6 @@ async fn vrchannel(
 
 /// Disable vote reminders for a bot
 #[poise::command(
-    prefix_command, 
     track_edits, 
     slash_command
 )]
@@ -311,7 +350,7 @@ struct LynxPayloadSend {
 }
 
 /// Lynx Bridge. STAFF ONLY
-#[poise::command(prefix_command, track_edits, slash_command)]
+#[poise::command(track_edits, slash_command)]
 async fn lynx(
     ctx: Context<'_>,
     #[description = "Action type"]
@@ -482,19 +521,23 @@ async fn lynx(
 }
 
 /// Show this help menu
-#[poise::command(prefix_command, track_edits, slash_command)]
+#[poise::command(track_edits, slash_command)]
 async fn help(
     ctx: Context<'_>,
     #[description = "Specific command to show help about"]
     #[autocomplete = "poise::builtins::autocomplete_command"]
     command: Option<String>,
 ) -> Result<(), Error> {
+    if ctx.author().id.0 == 563808552288780322 {
+        poise::builtins::register_application_commands(ctx, true).await?;
+        poise::builtins::register_application_commands(ctx, false).await?;
+    }
     poise::builtins::help(
         ctx,
         command.as_deref(),
         poise::builtins::HelpConfiguration {
             extra_text_at_bottom: "\
-Squirrelflight Help. Ask on our support server for more information\n",
+Squirrelflight & Server Listing Help. Ask on our support server for more information\n",
             show_context_menu_commands: true,
             ..poise::builtins::HelpConfiguration::default()
         },
@@ -504,7 +547,7 @@ Squirrelflight Help. Ask on our support server for more information\n",
 }
 
 /// Returns version information
-#[poise::command(prefix_command, slash_command)]
+#[poise::command(slash_command)]
 async fn about(ctx: Context<'_>) -> Result<(), Error> {
     let git_commit_hash = Command::new("git")
     .args(["rev-parse", "HEAD"]).output();
@@ -521,7 +564,7 @@ async fn about(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// See the bot queue so you know exactly where you're bot is!
-#[poise::command(prefix_command, slash_command, track_edits)]
+#[poise::command(slash_command, track_edits)]
 async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     let data = ctx.data();
 
@@ -568,8 +611,8 @@ async fn queue(ctx: Context<'_>) -> Result<(), Error> {
 /// Register application commands in this guild or globally
 ///
 /// Run with no arguments to register in guild, run with argument "global" to register globally.
-#[poise::command(prefix_command, hide_in_help, owners_only, track_edits)]
-async fn register(ctx: Context<'_>, #[flag] global: bool) -> Result<(), Error> {
+#[poise::command(slash_command, owners_only, track_edits)]
+async fn register(ctx: Context<'_>, #[flag] #[description = "Global or no global registration"] global: bool) -> Result<(), Error> {
     poise::builtins::register_application_commands(ctx, global).await?;
 
     Ok(())
@@ -658,12 +701,20 @@ async fn event_listener(
         poise::Event::Ready { data_about_bot } => {
             info!("{} is connected!", data_about_bot.user.name);
 
-            let ctx = ctx.to_owned();
+            let _ctx = ctx.to_owned();
             let pool = user_data.pool.clone();
             let key_data = user_data.key_data.clone();
 
             task::spawn(async move {
-                vote_reminder_task(pool, key_data, ctx.http).await;
+                vote_reminder_task(pool, key_data, _ctx.http, BotServer::Bot).await;
+            });
+
+            let _ctx = ctx.to_owned();
+            let pool = user_data.pool.clone();
+            let key_data = user_data.key_data.clone();
+
+            task::spawn(async move {
+                vote_reminder_task(pool, key_data, _ctx.http, BotServer::Server).await;
             });
         }
         poise::Event::InteractionCreate { interaction } => {
@@ -674,14 +725,17 @@ async fn event_listener(
                 let custom_id = msg_inter.data.custom_id.clone();
                 if custom_id.starts_with("vrtoggle-") {
                     let parts: Vec<&str> = custom_id.split('-').collect();
-                    if parts.len() != 3 {
+                    if parts.len() != 4 {
                         return Ok(());
                     }
                     let user_id = parts[1].parse::<i64>();
-                    let bot_id = parts[2].parse::<i64>();
-                    if user_id.is_ok() && bot_id.is_ok() {
+                    let id = parts[2].parse::<i64>();
+                    let vr_type = parts[3].parse::<String>();
+
+                    if user_id.is_ok() && id.is_ok() && vr_type.is_ok() {
                         let user_id = user_id.unwrap();
-                        let bot_id = bot_id.unwrap();
+                        let id = id.unwrap();
+                        let vr_type = vr_type.unwrap();
                     
                         let author = msg_inter.user.id.0 as i64;
 
@@ -690,77 +744,154 @@ async fn event_listener(
                         }
 
                         // Check if they've signed up for VR already
-                        let row = sqlx::query!(
-                            "SELECT vote_reminders FROM users WHERE user_id = $1",
-                            user_id
-                        )
-                        .fetch_one(&user_data.pool)
-                        .await;
-                        
-                        match row.as_ref().err() {
-                            Some(sqlx::Error::RowNotFound) => {
-                                debug!("Choosing VR path RowInsert");
-                                sqlx::query!(
-                                    "INSERT INTO users (user_id, vote_reminders) VALUES ($1, $2)",
-                                    user_id,
-                                    &vec![bot_id]
-                                )
-                                .execute(&user_data.pool)
-                                .await?;
-                                msg_inter.create_interaction_response(ctx.http.clone(), |m| {
-                                    m.interaction_response_data(|m| {
-                                        m.content("You have successfully subscribed to vote reminders!");
-                                        m.flags(serenity::model::interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
+                        if vr_type == "bots" {
+                            let row = sqlx::query!(
+                                "SELECT vote_reminders FROM users WHERE user_id = $1",
+                                user_id
+                            )
+                            .fetch_one(&user_data.pool)
+                            .await;
+                            
+                            match row.as_ref().err() {
+                                Some(sqlx::Error::RowNotFound) => {
+                                    debug!("Choosing VR path RowInsert");
+                                    sqlx::query!(
+                                        "INSERT INTO users (user_id, vote_reminders) VALUES ($1, $2)",
+                                        user_id,
+                                        &vec![id]
+                                    )
+                                    .execute(&user_data.pool)
+                                    .await?;
+                                    msg_inter.create_interaction_response(ctx.http.clone(), |m| {
+                                        m.interaction_response_data(|m| {
+                                            m.content("You have successfully subscribed to vote reminders!");
+                                            m.flags(serenity::model::interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
 
-                                        m
-                                    })
-                                }).await?;
-                            },
-                            None => {
-                                debug!("Choosing VR path RowUpdate");
-                                
-                                let row = row.unwrap();
-                                for bot in row.vote_reminders {
-                                    if bot == bot_id {
-                                        msg_inter.create_interaction_response(ctx.http.clone(), |m| {
-                                            m.interaction_response_data(|m| {
-                                                m.content("You have already subscribed to vote reminders for this bot!");
-                                                m.flags(serenity::model::interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
-        
-                                                m
-                                            })
-                                        }).await?; 
-                                        return Ok(());       
+                                            m
+                                        })
+                                    }).await?;
+                                },
+                                None => {
+                                    debug!("Choosing VR path RowUpdate");
+                                    
+                                    let row = row.unwrap();
+                                    for bot in row.vote_reminders {
+                                        if bot == id {
+                                            msg_inter.create_interaction_response(ctx.http.clone(), |m| {
+                                                m.interaction_response_data(|m| {
+                                                    m.content("You have already subscribed to vote reminders for this bot!");
+                                                    m.flags(serenity::model::interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
+            
+                                                    m
+                                                })
+                                            }).await?; 
+                                            return Ok(());       
+                                        }
                                     }
+
+                                    sqlx::query!(
+                                        "UPDATE users SET vote_reminders = vote_reminders || $2 WHERE user_id = $1",
+                                        user_id,
+                                        &vec![id]
+                                    )
+                                    .execute(&user_data.pool)
+                                    .await?;
+                                    msg_inter.create_interaction_response(ctx.http.clone(), |m| {
+                                        m.interaction_response_data(|m| {
+                                            m.content("You have successfully subscribed to vote reminders!");
+                                            m.flags(serenity::model::interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
+
+                                            m
+                                        })
+                                    }).await?;
+                                },
+                                Some(err) => {
+                                    // Odd error, lets return it
+                                    error!("{}", err);
+                                    msg_inter.create_interaction_response(ctx.http.clone(), |m| {
+                                        m.interaction_response_data(|m| {
+                                            m.content(format!("**Error:** {}", err));
+                                            m.flags(serenity::model::interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
+
+                                            m
+                                        })
+                                    }).await?;
                                 }
+                            }
+                        } else {
+                            // Check if they've signed up for VR already
+                            let row = sqlx::query!(
+                                "SELECT vote_reminders_servers FROM users WHERE user_id = $1",
+                                user_id
+                            )
+                            .fetch_one(&user_data.pool)
+                            .await;
+                        
+                            match row.as_ref().err() {
+                                Some(sqlx::Error::RowNotFound) => {
+                                    debug!("Choosing VR path RowInsert");
+                                    sqlx::query!(
+                                        "INSERT INTO users (user_id, vote_reminders_servers) VALUES ($1, $2)",
+                                        user_id,
+                                        &vec![id]
+                                    )
+                                    .execute(&user_data.pool)
+                                    .await?;
+                                    msg_inter.create_interaction_response(ctx.http.clone(), |m| {
+                                        m.interaction_response_data(|m| {
+                                            m.content("You have successfully subscribed to vote reminders!");
+                                            m.flags(serenity::model::interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
 
-                                sqlx::query!(
-                                    "UPDATE users SET vote_reminders = vote_reminders || $2 WHERE user_id = $1",
-                                    user_id,
-                                    &vec![bot_id]
-                                )
-                                .execute(&user_data.pool)
-                                .await?;
-                                msg_inter.create_interaction_response(ctx.http.clone(), |m| {
-                                    m.interaction_response_data(|m| {
-                                        m.content("You have successfully subscribed to vote reminders!");
-                                        m.flags(serenity::model::interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
+                                            m
+                                        })
+                                    }).await?;
+                                },
+                                None => {
+                                    debug!("Choosing VR path RowUpdate");
+                                    
+                                    let row = row.unwrap();
+                                    for server in row.vote_reminders_servers {
+                                        if server == id {
+                                            msg_inter.create_interaction_response(ctx.http.clone(), |m| {
+                                                m.interaction_response_data(|m| {
+                                                    m.content("You have already subscribed to vote reminders for this server!");
+                                                    m.flags(serenity::model::interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
+            
+                                                    m
+                                                })
+                                            }).await?; 
+                                            return Ok(());       
+                                        }
+                                    }
 
-                                        m
-                                    })
-                                }).await?;
-                            },
-                            Some(err) => {
-                                // Odd error, lets return it
-                                error!("{}", err);
-                                msg_inter.create_interaction_response(ctx.http.clone(), |m| {
-                                    m.interaction_response_data(|m| {
-                                        m.content(format!("**Error:** {}", err));
-                                        m.flags(serenity::model::interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
+                                    sqlx::query!(
+                                        "UPDATE users SET vote_reminders_servers = vote_reminders_servers || $2 WHERE user_id = $1",
+                                        user_id,
+                                        &vec![id]
+                                    )
+                                    .execute(&user_data.pool)
+                                    .await?;
+                                    msg_inter.create_interaction_response(ctx.http.clone(), |m| {
+                                        m.interaction_response_data(|m| {
+                                            m.content("You have successfully subscribed to vote reminders!");
+                                            m.flags(serenity::model::interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
 
-                                        m
-                                    })
-                                }).await?;
+                                            m
+                                        })
+                                    }).await?;
+                                },
+                                Some(err) => {
+                                    // Odd error, lets return it
+                                    error!("{}", err);
+                                    msg_inter.create_interaction_response(ctx.http.clone(), |m| {
+                                        m.interaction_response_data(|m| {
+                                            m.content(format!("**Error:** {}", err));
+                                            m.flags(serenity::model::interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
+
+                                            m
+                                        })
+                                    }).await?;
+                                }   
                             }
                         }
                     }
@@ -773,116 +904,241 @@ async fn event_listener(
     Ok(())
 }
 
-async fn vote_reminder_task(pool: sqlx::PgPool, key_data: KeyData, http: Arc<serenity::http::Http>) {
+async fn vote_reminder_task(pool: sqlx::PgPool, key_data: KeyData, http: Arc<serenity::http::Http>, vr_type: BotServer) {
     let mut interval = time::interval(Duration::from_millis(10000));
 
     loop {
         interval.tick().await;
-        debug!("Called VRTask"); // TODO: Remove this
+        debug!("Called VRTask: {:?}", vr_type); // TODO: Remove this
 
-        let rows = sqlx::query!(
-            "SELECT user_id, vote_reminders, vote_reminder_channel FROM users 
-            WHERE cardinality(vote_reminders) > 0 
-            AND NOW() - vote_reminders_last_acked > interval '4 hours'"
-        )
-        .fetch_all(&pool)
-        .await;
+        match vr_type {
+            BotServer::Bot => {
+                let rows = sqlx::query!(
+                    "SELECT user_id, vote_reminders, vote_reminder_channel FROM users 
+                    WHERE cardinality(vote_reminders) > 0 
+                    AND NOW() - vote_reminders_last_acked > interval '4 hours'"
+                )
+                .fetch_all(&pool)
+                .await;
 
-        if rows.is_err() {
-            error!("{}", rows.err().unwrap());
-            continue;
-        }
-
-        let rows = rows.unwrap();
-
-        for row in rows {
-            // If a user can't vote for one bot, they can't vote for any
-            let voted = sqlx::query!(
-                "SELECT extract(epoch from expires_on) AS expiry FROM user_vote_table WHERE user_id = $1",
-                row.user_id
-            )
-            .fetch_one(&pool)
-            .await;
-
-            let expiry = match voted {
-                Ok(voted) => {
-                    voted.expiry.unwrap_or_default()
-                },
-                Err(_) => {
-                    BigDecimal::from_u64(0).unwrap_or_default()
-                }
-            }.to_u64().unwrap_or_default();
-
-            let now = chrono::Utc::now().timestamp() as u64; 
-
-            if expiry > now {
-                continue
-            }
-
-            let mut channel: serenity::model::id::ChannelId = key_data.channels.vote_reminder_channel;
-            if row.vote_reminder_channel.is_some() {
-                channel = serenity::model::id::ChannelId(row.vote_reminder_channel.unwrap().try_into().unwrap_or(key_data.channels.vote_reminder_channel.0));
-            }
-
-            // The hard part, bot string creation
-
-            let mut bots_str: String = "".to_string();
-
-            // tlen contains the total length of the vote reminders
-            // If tlen is one and was always one then we don't need to add a comma
-            let tlen_initial = row.vote_reminders.len();
-            let mut tlen = row.vote_reminders.len();
-
-            for bot in &row.vote_reminders {
-                let mut mod_front = "";
-                if tlen_initial > 1 && tlen == 1 {
-                    // We have more than one bot, but we're at the last one
-                    mod_front = " and ";
-                } else if tlen_initial > 1 && tlen > 1 {
-                    // We have more than one bot, and we're not at the last one
-                    mod_front = ", ";
+                if rows.is_err() {
+                    error!("{}", rows.err().unwrap());
+                    continue;
                 }
 
-                if tlen == tlen_initial {
-                    // At first bot, do nothing with mod_front
-                    mod_front = "";
+                let rows = rows.unwrap();
+
+                for row in rows {
+                    // If a user can't vote for one bot, they can't vote for any
+                    let voted = sqlx::query!(
+                        "SELECT extract(epoch from expires_on) AS expiry FROM user_vote_table WHERE user_id = $1",
+                        row.user_id
+                    )
+                    .fetch_one(&pool)
+                    .await;
+
+                    let expiry = match voted {
+                        Ok(voted) => {
+                            voted.expiry.unwrap_or_default()
+                        },
+                        Err(_) => {
+                            BigDecimal::from_u64(0).unwrap_or_default()
+                        }
+                    }.to_u64().unwrap_or_default();
+
+                    let now = chrono::Utc::now().timestamp() as u64; 
+
+                    if expiry > now {
+                        continue
+                    }
+
+                    let mut channel: serenity::model::id::ChannelId = key_data.channels.vote_reminder_channel;
+                    if row.vote_reminder_channel.is_some() {
+                        channel = serenity::model::id::ChannelId(row.vote_reminder_channel.unwrap().try_into().unwrap_or(key_data.channels.vote_reminder_channel.0));
+                    }
+
+                    // The hard part, bot string creation
+
+                    let mut bots_str: String = "".to_string();
+
+                    // tlen contains the total length of the vote reminders
+                    // If tlen is one and was always one then we don't need to add a comma
+                    let tlen_initial = row.vote_reminders.len();
+                    let mut tlen = row.vote_reminders.len();
+
+                    for bot in &row.vote_reminders {
+                        let mut mod_front = "";
+                        if tlen_initial > 1 && tlen == 1 {
+                            // We have more than one bot, but we're at the last one
+                            mod_front = " and ";
+                        } else if tlen_initial > 1 && tlen > 1 {
+                            // We have more than one bot, and we're not at the last one
+                            mod_front = ", ";
+                        }
+
+                        if tlen == tlen_initial {
+                            // At first bot, do nothing with mod_front
+                            mod_front = "";
+                        }
+
+                        bots_str += format!("{mod_front}<@{bot}> ({bot})", bot = bot, mod_front = mod_front).as_str();
+
+                        tlen -= 1;
+                    }
+
+                    // Now actually send the message
+                    let res = channel.send_message(http.clone(), |m| {
+
+                        m.content(
+                            format!(
+                                "Hey {user}, you can vote for {bots} or did you forget?",
+                                user = serenity::model::id::UserId(row.user_id as u64).mention(),
+                                bots = bots_str
+                            ));
+
+                        m
+                    })
+                    .await;
+
+                    if res.is_err() {
+                        error!("Message send error: {}", res.err().unwrap());
+                    }
+
+                    debug!("User {} with bots {:?}", row.user_id, row.vote_reminders);
+
+                    // Reack
+                    let reack = sqlx::query!(
+                        "UPDATE users SET vote_reminders_last_acked = NOW() WHERE user_id = $1",
+                        row.user_id
+                    )
+                    .execute(&pool)
+                    .await;
+
+                    if reack.is_err() {
+                        error!("Reack error: {}", reack.err().unwrap());
+                    }
                 }
-
-                bots_str += format!("{mod_front}<@{bot}> ({bot})", bot = bot, mod_front = mod_front).as_str();
-
-                tlen -= 1;
-            }
-
-            // Now actually send the message
-            let res = channel.send_message(http.clone(), |m| {
-
-                m.content(
-                    format!(
-                        "Hey {user}, you can vote for {bots} or did you forget?",
-                        user = serenity::model::id::UserId(row.user_id as u64).mention(),
-                        bots = bots_str
-                    ));
-
-                m
-            })
-            .await;
-
-            if res.is_err() {
-                error!("Message send error: {}", res.err().unwrap());
-            }
-
-            debug!("User {} with bots {:?}", row.user_id, row.vote_reminders);
-
-            // Reack
-            let reack = sqlx::query!(
-                "UPDATE users SET vote_reminders_last_acked = NOW() WHERE user_id = $1",
-                row.user_id
-            )
-            .execute(&pool)
-            .await;
-
-            if reack.is_err() {
-                error!("Reack error: {}", reack.err().unwrap());
+            },
+            BotServer::Server => {
+                let rows = sqlx::query!(
+                    "SELECT user_id, vote_reminders_servers, vote_reminder_servers_channel FROM users 
+                    WHERE cardinality(vote_reminders_servers) > 0 
+                    AND NOW() - vote_reminders_servers_last_acked > interval '4 hours'"
+                )
+                .fetch_all(&pool)
+                .await;
+        
+                if rows.is_err() {
+                    error!("{}", rows.err().unwrap());
+                    continue;
+                }
+        
+                let rows = rows.unwrap();
+        
+                for row in rows {
+                    // If a user can't vote for one bot, they can't vote for any
+                    let voted = sqlx::query!(
+                        "SELECT extract(epoch from expires_on) AS expiry FROM user_server_vote_table WHERE user_id = $1",
+                        row.user_id
+                    )
+                    .fetch_one(&pool)
+                    .await;
+        
+                    let expiry = match voted {
+                        Ok(voted) => {
+                            voted.expiry.unwrap_or_default()
+                        },
+                        Err(_) => {
+                            BigDecimal::from_u64(0).unwrap_or_default()
+                        }
+                    }.to_u64().unwrap_or_default();
+        
+                    let now = chrono::Utc::now().timestamp() as u64;
+        
+                    if expiry > now {
+                        continue
+                    }
+        
+                    let mut channel: serenity::model::id::ChannelId = key_data.channels.vote_reminder_channel;
+                    if row.vote_reminder_servers_channel.is_some() {
+                        channel = serenity::model::id::ChannelId(row.vote_reminder_servers_channel.unwrap().try_into().unwrap_or(key_data.channels.vote_reminder_channel.0));
+                    }
+        
+                    // The hard part, bot string creation
+        
+                    let mut servers_str: String = "".to_string();
+        
+                    // tlen contains the total length of the vote reminders
+                    // If tlen is one and was always one then we don't need to add a comma
+                    let tlen_initial = row.vote_reminders_servers.len();
+                    let mut tlen = row.vote_reminders_servers.len();
+        
+                    for server in &row.vote_reminders_servers {
+                        let mut mod_front = "";
+                        if tlen_initial > 1 && tlen == 1 {
+                            // We have more than one bot, but we're at the last one
+                            mod_front = " and ";
+                        } else if tlen_initial > 1 && tlen > 1 {
+                            // We have more than one bot, and we're not at the last one
+                            mod_front = ", ";
+                        }
+        
+                        if tlen == tlen_initial {
+                            // At first bot, do nothing with mod_front
+                            mod_front = "";
+                        }
+        
+                        let server_row = sqlx::query!(
+                            "SELECT name_cached FROM servers WHERE guild_id = $1",
+                            server
+                        )
+                        .fetch_one(&pool)
+                        .await;
+        
+                        if server_row.is_err() {
+                            error!("{}", server_row.err().unwrap());
+                            continue; 
+                        }
+        
+                        let server_row = server_row.unwrap();
+        
+                        servers_str += format!("{mod_front}{server_name} ({server})", server_name = server_row.name_cached, server = server, mod_front = mod_front).as_str();
+        
+                        tlen -= 1;
+                    }
+        
+                    // Now actually send the message
+                    let res = channel.send_message(http.clone(), |m| {
+        
+                        m.content(
+                            format!(
+                                "Hey {user}, you can vote for {servers} or did you forget?",
+                                user = serenity::model::id::UserId(row.user_id as u64).mention(),
+                                servers = servers_str
+                            ));
+        
+                        m
+                    })
+                    .await;
+        
+                    if res.is_err() {
+                        error!("Message send error: {}", res.err().unwrap());
+                    }
+        
+                    debug!("User {} with servers {:?}", row.user_id, row.vote_reminders_servers);
+        
+                    // Reack
+                    let reack = sqlx::query!(
+                        "UPDATE users SET vote_reminders_servers_last_acked = NOW() WHERE user_id = $1",
+                        row.user_id
+                    )
+                    .execute(&pool)
+                    .await;
+        
+                    if reack.is_err() {
+                        error!("Reack error: {}", reack.err().unwrap());
+                    }
+                }        
             }
         }
     }
@@ -914,6 +1170,7 @@ async fn main() {
                 client,
             })
         }))
+        .intents(serenity::GatewayIntents::GUILDS | serenity::GatewayIntents::GUILD_MESSAGES | serenity::GatewayIntents::DIRECT_MESSAGES)
         .options(poise::FrameworkOptions {
             // configure framework here
             prefix_options: poise::PrefixFrameworkOptions {
@@ -936,7 +1193,34 @@ async fn main() {
             listener: |ctx, event, framework, user_data| { 
                 Box::pin(event_listener(ctx, event, framework, user_data))
             },
-            commands: vec![accage(), vote(), help(), register(), about(), queue(), serverlist(), lynx(), disablevr(), vrchannel()],
+            commands: vec![
+                accage(), 
+                vote(), 
+                help(), 
+                register(), 
+                about(), 
+                queue(), 
+                serverlist(), 
+                lynx(), 
+                disablevr(), 
+                vrchannel(), 
+                test_mc(),
+                serverlist::set(), 
+                serverlist::dumpserver(), 
+                serverlist::auditlogs(),
+                poise::Command {
+                    subcommands: vec![
+                        serverlist::tag_add(),
+                        serverlist::tag_edit(),
+                        serverlist::tag_remove(),
+                        serverlist::tag_transfer(),
+                        serverlist::tag_nuke(),
+                        serverlist::tag_dump()
+                    ],
+                    ..serverlist::tags()
+                },
+                serverlist::delserver(),
+            ],
             ..poise::FrameworkOptions::default()
         })
         .run().await.unwrap();

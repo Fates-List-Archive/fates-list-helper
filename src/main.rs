@@ -650,7 +650,7 @@ async fn queue(ctx: Context<'_>) -> Result<(), Error> {
             name = "Username not cached".to_string();
         }
 
-        desc += format!("\n**{i}. {name}** - [View On Site](https://fateslist.xyz/bot/{invite})\n{desc}", i=i, name=name, invite=row.bot_id, desc=row.description.unwrap_or_default()).as_str();
+        desc += format!("\n**{i}. {name}** - [View On Site](https://fateslist.xyz/bot/{invite})\n{desc}", i=i, name=name, invite=row.bot_id, desc=row.description).as_str();
     
         i += 1;
     }

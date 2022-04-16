@@ -622,13 +622,29 @@ pub async fn set(
         return Ok(());
     }
 
+    let member = member.unwrap();
+
+    let data = ctx.data();
+
+    // Check if user has logged in or not
+    let check = sqlx::query!(
+        "SELECT user_id FROM users WHERE user_id = $1",
+        member.user.id.0 as i64
+    )
+    .fetch_one(&data.pool)
+    .await;
+
+    if check.is_err() {
+        sqlx::query!("INSERT INTO users (id, user_id, username, api_token) VALUES ($1, $1, $2, $3)", member.user.id.0 as i64, member.user.name, create_token(128))
+            .execute(&data.pool)
+            .await?;
+    }
+
     let mut value = value; // Force it to be mutable and shadow immutable value
 
     if value == *"none" {
         value = "".to_string();
     }
-
-    let data = ctx.data();
 
     // Update server details
     let guild_with_mc = ctx.discord().http.get_guild_with_counts(guild.id.0).await?;
@@ -650,8 +666,6 @@ pub async fn set(
     )
     .execute(&data.pool)
     .await?;
-
-    let member = member.unwrap();
 
     // Force HTTP(s)
     value = value.replace("http://", "https://");

@@ -485,13 +485,6 @@ async fn lynx(
 
     let (mut write, mut read) = ws_stream.split();
 
-    let first = read.next().await;
-
-    if first.is_none() {
-        ctx.say("[ERROR] Failed to connect to Lynx").await?;
-        return Ok(());
-    }
-
     // Send action
     ctx.say(format!("[DEBUG] Sending request for action {:?}", action)).await?;
 

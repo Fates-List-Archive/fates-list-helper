@@ -1,10 +1,9 @@
-# Squirrelflight Rewrite
+# Fates List Helper
 
 Aims:
 
 - Better than old squirrelflight
-- Allow voting for bots and proper (easy vote reminders)
-- (Possibly) Vote reminders as well (or that might be kept in flamepaw)
+- Allow voting for bots and proper (easy) vote reminders
+- Server Listing
 
-
-**This is the source code that powers Fates List Helper**
+**This is the source code that powers Fates List Helper (formely Squirrelflight but name changed due to copyright reasons)**

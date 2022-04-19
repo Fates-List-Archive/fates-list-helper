@@ -386,6 +386,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "fateslisthelper"
+version = "0.1.0"
+dependencies = [
+ "async-tungstenite",
+ "base64",
+ "bigdecimal",
+ "chrono",
+ "env_logger",
+ "http",
+ "log",
+ "poise",
+ "rand",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_repr",
+ "sqlx",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "flate2"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1598,28 +1620,6 @@ dependencies = [
  "once_cell",
  "tokio",
  "tokio-native-tls",
-]
-
-[[package]]
-name = "squirrelflight"
-version = "0.1.0"
-dependencies = [
- "async-tungstenite",
- "base64",
- "bigdecimal",
- "chrono",
- "env_logger",
- "http",
- "log",
- "poise",
- "rand",
- "reqwest",
- "serde",
- "serde_json",
- "serde_repr",
- "sqlx",
- "thiserror",
- "tokio",
 ]
 
 [[package]]

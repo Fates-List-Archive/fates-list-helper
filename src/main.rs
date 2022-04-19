@@ -1207,7 +1207,7 @@ async fn vote_reminder_task(pool: sqlx::PgPool, key_data: KeyData, http: Arc<ser
 async fn main() {
     const MAX_CONNECTIONS: u32 = 3; // max connections to the database, we don't need too many here
 
-    std::env::set_var("RUST_LOG", "squirrelflight=debug");
+    std::env::set_var("RUST_LOG", "fateslisthelper=debug");
     env_logger::init();
     info!("Starting Squirrelfight...");
 

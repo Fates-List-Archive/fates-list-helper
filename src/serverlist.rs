@@ -611,8 +611,36 @@ pub async fn set(
     #[description = "Field to set"]
     field: SetField,
     #[description = "(Raw) Value to set field to. 'none' to reset"]
-    value: String,
+    mut value: Option<String>,
+    #[description = "A file containing the value to set. Overrides value"]
+    long_value: Option<serenity::model::channel::Attachment>
 ) -> Result<(), Error> {
+    if long_value.is_some() {
+        let long_value = long_value.unwrap();
+        if !long_value.filename.ends_with(".txt") {
+            ctx.say("File name must end in .txt at the time!").await?;
+            return Ok(());
+        }
+
+        let download = long_value.download().await?;
+        
+        value = Some(match std::str::from_utf8(&download) {
+            Ok(v) => v.to_string(),
+            Err(e) => {
+                ctx.say(format!("File is not a valid string: {:?}!", e)).await?;
+                return Ok(());
+            },
+        });
+    }
+
+    if value.is_none() {
+        ctx.say("No value or long_value found. Use 'none' if you wish to unset a field").await?;
+        return Ok(());
+    }
+
+    let value = value.unwrap();
+    
+
     let guild = ctx.guild().unwrap();
 
     let member = ctx.author_member().await;
@@ -669,23 +697,6 @@ pub async fn set(
 
     // Force HTTP(s)
     value = value.replace("http://", "https://");
-
-    // Handle pastebin
-    if value.starts_with("https://pastebin.com/") || value.starts_with("https://www.pastebin.com") || value.starts_with("pastebin.com") {
-        value = value.replacen("pastebin.com/", "pastebin.com/raw/", 1);
-        let res = data.client.get(&value)
-        .send()
-        .await?;
-
-        let status = res.status();
-
-        if status.is_success() {
-            value = res.text().await?;
-        } else {
-            ctx.say("Error: Could not get pastebin due to status code: ".to_string()+status.as_str()).await?;
-            return Ok(());
-        }
-    }
 
     match field {
         SetField::Description => {

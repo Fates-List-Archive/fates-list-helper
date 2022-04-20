@@ -604,20 +604,27 @@ fn create_token(length: usize) -> String {
 }
 
 async fn deny_server(data: &Data, guild_id: i64) -> Result<(), Error> {
-    sqlx::query!("UPDATE servers SET state = 2, name_cached = 'Unknown', avatar_cached = '' WHERE guild_id = $1", guild_id).execute(&data.pool).await?;
+    sqlx::query!("UPDATE servers SET old_state = state, state = 2, name_cached = 'Unknown', avatar_cached = '' WHERE guild_id = $1", guild_id).execute(&data.pool).await?;
 
-    return Ok(());
+    Ok(())
+}
+
+async fn ban_server(data: &Data, guild_id: i64) -> Result<(), Error> {
+    sqlx::query!("UPDATE servers SET old_state = state, state = 5, name_cached = 'Unknown', avatar_cached = '' WHERE guild_id = $1", guild_id).execute(&data.pool).await?;
+
+    Ok(())
 }
 
 /// Deny and anonymize a server on server listing
 #[poise::command(track_edits, slash_command, owners_only)] 
-pub async fn denyserver(
+pub async fn banserver(
     ctx: Context<'_>,
-    #[description = "Guild to deny"]
+    #[description = "Guild to ban"]
     guild_id: String,
 ) -> Result<(), Error> {
     let guild_id: i64 = guild_id.parse()?;
-    deny_server(&ctx.data(), guild_id).await?;
+    let data = ctx.data();
+    ban_server(&data, guild_id).await?;
     ctx.say("Server denied").await?;
     Ok(())
 }
@@ -722,6 +729,25 @@ pub async fn set(
     )
     .execute(&data.pool)
     .await?;
+
+    let state = sqlx::query!(
+        "SELECT state FROM servers WHERE guild_id = $1",
+        guild.id.0 as i64
+    )
+    .fetch_one(&data.pool)
+    .await?;
+
+    if state.state == 4 {
+        ctx.say("Your server has been banned due to breaking our rules. Please contact Fates List Staff if you wish to appeal").await?;
+        return Ok(());
+    } else if state.state == 2 {
+        sqlx::query!(
+            "UPDATE servers SET state = old_state WHERE guild_id = $1",
+            guild.id.0 as i64
+        )
+        .execute(&data.pool)
+        .await?;
+    }
 
     // Force HTTP(s)
     value = value.replace("http://", "https://");

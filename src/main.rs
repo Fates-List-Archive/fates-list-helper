@@ -1280,7 +1280,7 @@ async fn main() {
                     ..serverlist::tags()
                 },
                 serverlist::delserver(),
-                serverlist::denyserver(),
+                serverlist::banserver(),
             ],
             ..poise::FrameworkOptions::default()
         })

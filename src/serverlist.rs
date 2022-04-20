@@ -1227,6 +1227,11 @@ pub async fn set(
                 }
             }
 
+            if vote_roles.len() > 3 {
+                ctx.say("You can only have up to 3 vote roles").await?;
+                return Ok(());
+            }
+
             sqlx::query!(
                 "UPDATE servers SET autorole_votes = $1 WHERE guild_id = $2",
                 &vote_roles,

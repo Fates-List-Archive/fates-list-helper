@@ -746,8 +746,6 @@ async fn event_listener(
         },
 
         poise::Event::GuildCreate { guild, is_new } => {
-            debug!("Entered guild {:?}. is_new: {:?}", guild.id, is_new);
-
             if *is_new {
                 return Ok(());
             }

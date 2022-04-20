@@ -457,7 +457,7 @@ pub async fn tag_remove(
 
 
 /// View audit logs.
-#[poise::command(prefix_command, slash_command, guild_cooldown = 10, required_permissions = "VIEW_AUDIT_LOG | MANAGE_GUILD")]
+#[poise::command(prefix_command, slash_command, guild_cooldown = 10, required_permissions = "VIEW_AUDIT_LOG")]
 pub async fn auditlogs(
     ctx: Context<'_>,
 ) -> Result<(), Error> {
@@ -471,7 +471,7 @@ pub async fn auditlogs(
     let guild = guild.unwrap();
 
     // Get around attachment limitation
-    ctx.defer().await?;
+    ctx.defer_ephemeral().await?;
 
     // Dump server table
     let row = sqlx::query!(

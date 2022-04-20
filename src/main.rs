@@ -602,8 +602,8 @@ async fn version(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-/// See the bot queue so you know exactly where you're bot is!
-#[poise::command(slash_command, track_edits)]
+/// See the bot queue.
+#[poise::command(slash_command, track_edits, rename = "botqueue")]
 async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     let data = ctx.data();
 
@@ -1268,6 +1268,7 @@ async fn main() {
                 serverlist::set(), 
                 serverlist::dumpserver(), 
                 serverlist::auditlogs(),
+                serverlist::allowlist(),
                 poise::Command {
                     subcommands: vec![
                         serverlist::tag_add(),

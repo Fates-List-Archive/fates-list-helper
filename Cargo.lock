@@ -754,9 +754,9 @@ dependencies = [
 
 [[package]]
 name = "ipnet"
-version = "2.4.0"
+version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35e70ee094dc02fd9c13fdad4940090f22dbd6ac7c9e7094a46cf0232a50bc7c"
+checksum = "879d54834c8c76457ef4293a689b2a8c59b076067ad77b15efafbb05f92a592b"
 
 [[package]]
 name = "itertools"
@@ -790,9 +790,9 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "libc"
-version = "0.2.123"
+version = "0.2.124"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb691a747a7ab48abc15c5b42066eaafde10dc427e3b6ee2a1cf43db04c763bd"
+checksum = "21a41fed9d98f27ab1c6d161da622a4fa35e8a54a8adc24bbf3ddd0ef70b0e50"
 
 [[package]]
 name = "lock_api"
@@ -1103,7 +1103,7 @@ checksum = "1df8c4ec4b0627e53bdf214615ad287367e482558cf84b109250b37464dc03ae"
 [[package]]
 name = "poise"
 version = "0.1.0"
-source = "git+https://github.com/kangalioo/poise?branch=master#b6dcd69989953dd61a3676c09a79977aff0837bf"
+source = "git+https://github.com/kangalioo/poise?branch=master#0f526b77e5e354fa2a7d2a3fb6bdfac5bf0fb226"
 dependencies = [
  "async-trait",
  "derivative",
@@ -1120,7 +1120,7 @@ dependencies = [
 [[package]]
 name = "poise_macros"
 version = "0.1.0"
-source = "git+https://github.com/kangalioo/poise?branch=master#b6dcd69989953dd61a3676c09a79977aff0837bf"
+source = "git+https://github.com/kangalioo/poise?branch=master#0f526b77e5e354fa2a7d2a3fb6bdfac5bf0fb226"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -1428,8 +1428,9 @@ dependencies = [
 
 [[package]]
 name = "serenity"
-version = "0.10.10"
-source = "git+https://github.com/serenity-rs/serenity?rev=2bb9a01bfccd0485ccb7e9f20cce8edff7426eb3#2bb9a01bfccd0485ccb7e9f20cce8edff7426eb3"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96455fdd03a3cb8c3270c47adf21d748b65067affc6c911ed4ed4ae05f097cab"
 dependencies = [
  "async-trait",
  "async-tungstenite",
@@ -1528,9 +1529,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx"
-version = "0.5.12"
+version = "0.5.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2be6e4d8b60285763c7a0c17f57839d5f1e864d948fe7ff26eaf38f04db95fc"
+checksum = "551873805652ba0d912fec5bbb0f8b4cdd96baf8e2ebf5970e5671092966019b"
 dependencies = [
  "sqlx-core",
  "sqlx-macros",
@@ -1538,9 +1539,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx-core"
-version = "0.5.12"
+version = "0.5.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5728d5a4de38574e1a43139cf1d0124e978af8c19ea795d1d61c287785924cf2"
+checksum = "e48c61941ccf5ddcada342cd59e3e5173b007c509e1e8e990dafc830294d9dc5"
 dependencies = [
  "ahash",
  "atoi",
@@ -1591,9 +1592,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx-macros"
-version = "0.5.12"
+version = "0.5.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfce1fd7df05de96f76eb0d452e5ce8b106607933ac3c9a8f5c65c1ecc5955f5"
+checksum = "bc0fba2b0cae21fc00fe6046f8baa4c7fcb49e379f0f592b04696607f69ed2e1"
 dependencies = [
  "dotenv",
  "either",
@@ -1611,9 +1612,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx-rt"
-version = "0.5.12"
+version = "0.5.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f2cc78368bdd33ba6ad1c300f2b9ff4a844f9d7db140c34bc61ef304e1fc160"
+checksum = "4db708cd3e459078f85f39f96a00960bd841f66ee2a669e90bf36907f5a79aae"
 dependencies = [
  "actix-rt",
  "native-tls",

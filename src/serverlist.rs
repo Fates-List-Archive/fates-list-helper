@@ -629,7 +629,150 @@ pub async fn banserver(
     Ok(())
 }
 
-/// Sets a field
+#[derive(poise::ChoiceParameter, PartialEq, Debug)]
+pub enum Allowlist {
+    #[name = "User Whitelist"] 
+    Whitelist,
+    #[name = "User Blacklist"] 
+    Blacklist,
+}
+
+#[derive(poise::ChoiceParameter, PartialEq, Debug)]
+pub enum AllowlistAction {
+    #[name = "Add"] 
+    Add,
+    #[name = "Remove"] 
+    Remove,
+    #[name = "Clear"] 
+    Clear,
+}
+
+
+/// Modify the server allow list to control who can access a server
+#[poise::command(track_edits, slash_command, guild_cooldown = 5, guild_only, required_permissions = "ADMINISTRATOR")]
+pub async fn allowlist(
+    ctx: Context<'_>,
+    #[description = "List to change"]
+    field: Allowlist,
+    #[description = "What to change"]
+    change: AllowlistAction,
+    #[description = "Member to add/remove"]
+    user: Option<String>
+) -> Result<(), Error> {
+    if user.is_none() && change != AllowlistAction::Clear {
+        ctx.say("No user specified but you are asking to add/remove a user from allowlist").await?;
+        return Ok(());
+    }
+
+    let guild = ctx.guild().unwrap();
+    let data = ctx.data();
+
+    let state = sqlx::query!(
+        "SELECT state FROM servers WHERE guild_id = $1",
+        guild.id.0 as i64
+    )
+    .fetch_one(&data.pool)
+    .await?;
+
+    if state.state == 4 {
+        ctx.say("Your server has been banned due to breaking our rules. Please contact Fates List Staff if you wish to appeal").await?;
+        return Ok(());
+    } else if state.state == 2 {
+        sqlx::query!(
+            "UPDATE servers SET state = old_state WHERE guild_id = $1",
+            guild.id.0 as i64
+        )
+        .execute(&data.pool)
+        .await?;
+    }
+
+    match field {
+        Allowlist::Whitelist => {
+            match change {
+                AllowlistAction::Add => {
+                    let user: i64 = user.unwrap().parse()?;
+                    sqlx::query!(
+                        "UPDATE servers SET user_whitelist = array_remove(user_whitelist, $1) WHERE guild_id = $2",
+                        user,
+                        guild.id.0 as i64,
+                    )
+                    .execute(&data.pool)
+                    .await?;
+                    sqlx::query!(
+                        "UPDATE servers SET user_whitelist = array_append(user_whitelist, $1) WHERE guild_id = $2",
+                        user,
+                        guild.id.0 as i64,
+                    )
+                    .execute(&data.pool)
+                    .await?;
+                },
+                AllowlistAction::Remove => {
+                    let user: i64 = user.unwrap().parse()?;
+                    sqlx::query!(
+                        "UPDATE servers SET user_whitelist = array_remove(user_whitelist, $1) WHERE guild_id = $2",
+                        user,
+                        guild.id.0 as i64,
+                    )
+                    .execute(&data.pool)
+                    .await?;
+                },
+                AllowlistAction::Clear => {
+                    sqlx::query!(
+                        "UPDATE servers SET user_whitelist = '{}' WHERE guild_id = $1",
+                        guild.id.0 as i64,
+                    )
+                    .execute(&data.pool)
+                    .await?;
+                }
+            }
+        },
+        Allowlist::Blacklist => {
+            match change {
+                AllowlistAction::Add => {
+                    let user: i64 = user.unwrap().parse()?;
+                    sqlx::query!(
+                        "UPDATE servers SET user_blacklist = array_remove(user_blacklist, $1) WHERE guild_id = $2",
+                        user,
+                        guild.id.0 as i64,
+                    )
+                    .execute(&data.pool)
+                    .await?;
+                    sqlx::query!(
+                        "UPDATE servers SET user_blacklist = array_append(user_blacklist, $1) WHERE guild_id = $2",
+                        user,
+                        guild.id.0 as i64,
+                    )
+                    .execute(&data.pool)
+                    .await?;
+                },
+                AllowlistAction::Remove => {
+                    let user: i64 = user.unwrap().parse()?;
+                    sqlx::query!(
+                        "UPDATE servers SET user_blacklist = array_remove(user_blacklist, $1) WHERE guild_id = $2",
+                        user,
+                        guild.id.0 as i64,
+                    )
+                    .execute(&data.pool)
+                    .await?;
+                },
+                AllowlistAction::Clear => {
+                    sqlx::query!(
+                        "UPDATE servers SET user_blacklist = '{}' WHERE guild_id = $1",
+                        guild.id.0 as i64,
+                    )
+                    .execute(&data.pool)
+                    .await?;
+                }
+            }
+        }
+    }
+
+    ctx.say("Allowlist updated").await?;
+
+    Ok(())
+}
+
+/// Sets a field. This adds your server to the server list.
 #[poise::command(track_edits, slash_command, guild_cooldown = 5, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn set(
     ctx: Context<'_>,
@@ -674,10 +817,10 @@ pub async fn set(
     
     if guild.explicit_content_filter != serenity::model::guild::ExplicitContentFilter::All {
         ctx.say("You must have a explicit content filter set to scan messages from all users in your servers settings! See https://lynx.fateslist.xyz/privacy#server-listing").await?;
-        return deny_server(&data, guild.id.0 as i64).await;
+        return deny_server(data, guild.id.0 as i64).await;
     } else if !guild.features.contains(&"COMMUNITY".to_string()) {
         ctx.say("Your server must be a community server in order to be listed. See https://lynx.fateslist.xyz/privacy#server-listing").await?;
-        return deny_server(&data, guild.id.0 as i64).await;
+        return deny_server(data, guild.id.0 as i64).await;
     }
 
     let member = ctx.author_member().await;

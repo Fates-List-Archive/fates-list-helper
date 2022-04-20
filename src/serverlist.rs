@@ -912,7 +912,7 @@ pub async fn set(
         },
         SetField::LongDescription => {
             if value.len() < 200 {
-                ctx.say("Long description must be at least 200 characters.\n\nThis is required in order to create a optimal user experience for your users!\n\nHINT: Pastebin links are supported too!").await?;
+                ctx.say("Long description must be at least 200 characters.\n\nThis is required in order to create a optimal user experience for your users!\n\n!").await?;
                 return Ok(());
             }
 

@@ -457,7 +457,7 @@ pub async fn tag_remove(
 
 
 /// View audit logs.
-#[poise::command(prefix_command, slash_command, guild_cooldown = 10, required_permissions = "SEND_MESSAGES")]
+#[poise::command(prefix_command, slash_command, guild_cooldown = 10, required_permissions = "VIEW_AUDIT_LOG | MANAGE_GUILD")]
 pub async fn auditlogs(
     ctx: Context<'_>,
 ) -> Result<(), Error> {
@@ -486,8 +486,9 @@ pub async fn auditlogs(
     let data = serde_json::to_string_pretty(&logs)?;
 
     ctx.send(|m| {
-        m.content("Audit Logs");
-        m.attachment(serenity::AttachmentType::Bytes { data: Cow::from(data.as_bytes().to_vec()), filename: "audit-logs.json".to_string() } )
+        m.content("**If you or any server member wishes to remove their data from 'Audit Logs', please go to https://lynx.fateslist.xyz/privacy#data-deletion-request. Audit logs are not a replacement for proper moderation**");
+        m.attachment(serenity::AttachmentType::Bytes { data: Cow::from(data.as_bytes().to_vec()), filename: "audit-logs.json".to_string() } );
+        m.ephemeral(true)
     }).await?;
 
     Ok(())

@@ -395,8 +395,8 @@ struct LynxPayloadSend {
     action_data: LynxActionData,
 }
 
-/// Lynx Bridge. STAFF ONLY
-#[poise::command(track_edits, slash_command)]
+/// Lynx Bridge. STAFF ONLY. Used for verifying bots
+#[poise::command(slash_command)]
 async fn lynx(
     ctx: Context<'_>,
     #[description = "Action type"]

@@ -624,7 +624,7 @@ pub async fn banserver(
 ) -> Result<(), Error> {
     let guild_id: i64 = guild_id.parse()?;
     let data = ctx.data();
-    ban_server(&data, guild_id).await?;
+    ban_server(data, guild_id).await?;
     ctx.say("Server denied").await?;
     Ok(())
 }

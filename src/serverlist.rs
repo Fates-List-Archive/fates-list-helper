@@ -8,10 +8,10 @@ use serde_repr::Serialize_repr;
 
 type Error = crate::Error;
 type Context<'a> = crate::Context<'a>;
+type Data = crate::Data;
 
-/// Deletes the server. Bot will then leave server upon doing this
+/// Deletes the server from Fates List Server Listing
 #[poise::command(
-    prefix_command, 
     track_edits, 
     slash_command,
     guild_cooldown = 10, required_permissions = "ADMINISTRATOR"
@@ -44,20 +44,18 @@ pub async fn delserver(
     .execute(&data.pool)
     .await?;
 
-    ctx.say("Server deleted. Am now leaving server on user request. Reinvite bot to readd server to server listing").await?;
-
-    guild.leave(&ctx.discord()).await?;
+    ctx.say("Server deleted. Feel free to kick the bot").await?; 
 
     Ok(())
 }
 
 
 /// Tag base command
-#[poise::command(prefix_command, slash_command, guild_cooldown = 10, required_permissions = "SEND_MESSAGES")]
+#[poise::command(slash_command, guild_cooldown = 10, required_permissions = "SEND_MESSAGES")]
 pub async fn tags(
     ctx: Context<'_>,
 ) -> Result<(), Error> {
-    ctx.say("Available options are ``tags add``, ``tags dump``, ``tags remove``, ``tags edit``, ``tags nuke`` and ``tags transfer``.").await?;
+    ctx.say("Available options are ``tags add``, ``tags dump``, ``tags remove``, ``tags edit``, ``tags nuke`` and ``tags transfer``. *Please read our server listing rules available at https://lynx.fateslist.xyz/privacy#server-listing to ensure everyone has a good experience*").await?;
     Ok(())
 }
 
@@ -125,7 +123,7 @@ pub async fn tag_add(
             .execute(&data.pool)
             .await?;
 
-            ctx.say(format!("Tag {} added and ownership claimed as this is a brand new tag!", tag_name)).await?;
+            ctx.say(format!("Tag {} added and ownership claimed as this is a brand new tag! *Please read our server listing rules available at https://lynx.fateslist.xyz/privacy#server-listing to ensure everyone has a good experience*", tag_name)).await?;
         },
         Err(e) => {
             return Err(Box::new(e));
@@ -141,7 +139,7 @@ pub async fn tag_add(
 
             for tag in check.tags.unwrap_or_default() {
                 if tag == internal_tag_name {
-                    ctx.say(format!("Tag {} is already present on this server!", tag_name)).await?;
+                    ctx.say(format!("Tag {} is already present on this server! *Please read our server listing rules available at https://lynx.fateslist.xyz/privacy#server-listing to ensure everyone has a good experience*", tag_name)).await?;
                     return Ok(());
                 }
             }
@@ -169,7 +167,7 @@ pub async fn tag_add(
                 owner_guild = guild.id.0 as i64;
             }
 
-            ctx.say(format!("Tag {} added. The current owner server of this tag is {}. You can get detailed tag information using ``tag dump``!", tag_name, owner_guild)).await?;
+            ctx.say(format!("Tag {} added. The current owner server of this tag is {}. You can get detailed tag information using ``tag dump``! *Please read our server listing rules available at https://lynx.fateslist.xyz/privacy#server-listing to ensure everyone has a good experience*", tag_name, owner_guild)).await?;
         }
     }
 
@@ -215,7 +213,7 @@ pub async fn tag_edit(
         },
         Ok(row) => {
             if row.owner_guild != guild.id.0 as i64 {
-                ctx.say(format!("You do not own tag {} and as such you may not modify its properties.\n\nContact Fates List Staff if you think this server is holding the tag for malicious purposes and does not allow for sane discussion over it.", tag_name)).await?;
+                ctx.say(format!("You do not own tag {} and as such you may not modify its properties.\n\nContact Fates List Staff if you think this server is holding the tag for malicious purposes and does not allow for sane discussion over it. *Please read our server listing rules available at https://lynx.fateslist.xyz/privacy#server-listing to ensure everyone has a good experience*", tag_name)).await?;
                 return Ok(());
             }
 
@@ -227,7 +225,7 @@ pub async fn tag_edit(
             .execute(&data.pool)
             .await?;
 
-            ctx.say(format!("Tag {} updated!", tag_name)).await?;
+            ctx.say(format!("Tag {} updated! *Please read our server listing rules available at https://lynx.fateslist.xyz/privacy#server-listing to ensure everyone has a good experience*", tag_name)).await?;
         }
     }
 
@@ -372,7 +370,7 @@ pub async fn tag_transfer(
 }
 
 /// Dumps a tag
-#[poise::command(prefix_command, slash_command, guild_cooldown = 10, required_permissions = "SEND_MESSAGES", rename = "dump")]
+#[poise::command(slash_command, guild_cooldown = 10, required_permissions = "MANAGE_GUILD", rename = "dump")]
 pub async fn tag_dump(
     ctx: Context<'_>,
     #[description = "Tag name or internal name"]
@@ -604,8 +602,27 @@ fn create_token(length: usize) -> String {
     .collect()
 }
 
+async fn deny_server(data: &Data, guild_id: i64) -> Result<(), Error> {
+    sqlx::query!("UPDATE servers SET state = 2, name_cached = 'Unknown', avatar_cached = '' WHERE guild_id = $1", guild_id).execute(&data.pool).await?;
+
+    return Ok(());
+}
+
+/// Deny and anonymize a server on server listing
+#[poise::command(track_edits, slash_command, owners_only)] 
+pub async fn denyserver(
+    ctx: Context<'_>,
+    #[description = "Guild to deny"]
+    guild_id: String,
+) -> Result<(), Error> {
+    let guild_id: i64 = guild_id.parse()?;
+    deny_server(&ctx.data(), guild_id).await?;
+    ctx.say("Server denied").await?;
+    Ok(())
+}
+
 /// Sets a field
-#[poise::command(prefix_command, track_edits, slash_command, guild_cooldown = 5, guild_only, required_permissions = "MANAGE_GUILD")]
+#[poise::command(track_edits, slash_command, guild_cooldown = 5, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn set(
     ctx: Context<'_>,
     #[description = "Field to set"]
@@ -615,6 +632,8 @@ pub async fn set(
     #[description = "A file containing the value to set. Overrides value"]
     long_value: Option<serenity::model::channel::Attachment>
 ) -> Result<(), Error> {
+    let data = ctx.data();
+
     if long_value.is_some() {
         let long_value = long_value.unwrap();
         if !long_value.filename.ends_with(".txt") {
@@ -643,6 +662,16 @@ pub async fn set(
 
     let guild = ctx.guild().unwrap();
 
+    // Vaildate the guild
+    
+    if guild.explicit_content_filter != serenity::model::guild::ExplicitContentFilter::All {
+        ctx.say("You must have a explicit content filter set to scan messages from all users in your servers settings! See https://lynx.fateslist.xyz/privacy#server-listing").await?;
+        return deny_server(&data, guild.id.0 as i64).await;
+    } else if !guild.features.contains(&"COMMUNITY".to_string()) {
+        ctx.say("Your server must be a community server in order to be listed. See https://lynx.fateslist.xyz/privacy#server-listing").await?;
+        return deny_server(&data, guild.id.0 as i64).await;
+    }
+
     let member = ctx.author_member().await;
 
     if member.is_none() {
@@ -651,8 +680,6 @@ pub async fn set(
     }
 
     let member = member.unwrap();
-
-    let data = ctx.data();
 
     // Check if user has logged in or not
     let check = sqlx::query!(
@@ -761,7 +788,7 @@ pub async fn set(
                 let bot_member = guild.member(&ctx.discord(), bot.id).await?;
                 if !bot_member.permissions(&ctx.discord())?.manage_guild() {
                     ctx.say("The bot must have the `Manage Server` permission to change invite codes.
-    This is due to a dumb discord API decision to lock some *basic* invite information behind Manage Server
+    This is due to a discord API limitation to lock required invite information behind the Manage Server permission.
                     
     It is strongly recommended to remove this permission **immediately** after setting invite code for security purposes"
                 ).await?;
@@ -1086,7 +1113,7 @@ pub async fn set(
     .await?;
 
 
-    ctx.say(format!("Set {:?} successfully. Either use /dumpserver or check out your server page!", field)).await?;
+    ctx.say(format!("Set {:?} successfully. Either use /dumpserver or check out your server page!\n\nIf you wish to delete your server from server listing at any time, use `/delserver`. Fates List is not responsible for any harm caused by using Fates List Server Listing. *Please read our server listing rules available at https://lynx.fateslist.xyz/privacy#server-listing to ensure everyone has a good experience*", field)).await?;
 
     Ok(())
 }

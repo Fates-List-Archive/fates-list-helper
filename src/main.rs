@@ -40,18 +40,6 @@ async fn accage(
     Ok(())
 }
 
-/// Test guild member count
-#[poise::command(slash_command, guild_only, guild_cooldown = 5)]
-async fn test_mc(ctx: Context<'_>) -> Result<(), Error> {
-    let guild = ctx.guild().unwrap();
-
-    let guild_with_mc = ctx.discord().http.get_guild_with_counts(guild.id.0).await?;
-
-    let member_count = guild_with_mc.approximate_member_count.unwrap_or(guild.member_count);
-    ctx.say(format!("{}", member_count)).await.unwrap();
-    Ok(())
-}
-
 /// Votes for current server
 #[poise::command(slash_command, guild_only)]
 async fn voteserver(
@@ -191,14 +179,6 @@ async fn vote(
             })
         }).await?;
     }
-
-    Ok(())
-}
-
-/// Information on our new server list.
-#[poise::command(track_edits, slash_command)]
-async fn serverlist(ctx: Context<'_>)  -> Result<(), Error> {
-    ctx.say("Please consider trying out ``Fates List Server Listing`` at https://fateslist.xyz/frostpaw/add-server!").await?;
 
     Ok(())
 }
@@ -607,7 +587,7 @@ Squirrelflight & Server Listing Help. Ask on our support server for more informa
 
 /// Returns version information
 #[poise::command(slash_command)]
-async fn about(ctx: Context<'_>) -> Result<(), Error> {
+async fn version(ctx: Context<'_>) -> Result<(), Error> {
     let git_commit_hash = Command::new("git")
     .args(["rev-parse", "HEAD"]).output();
 
@@ -757,6 +737,28 @@ async fn event_listener(
     user_data: &Data,
 ) -> Result<(), Error> {
     match event {
+        poise::Event::GuildDelete { incomplete, full: _ } => {
+            debug!("Left guild {:?}", incomplete.id);
+
+            sqlx::query!("UPDATE servers SET old_state = state, state = 3 WHERE guild_id = $1", incomplete.id.0 as i64)
+                .execute(&user_data.pool)
+                .await?;
+        },
+
+        poise::Event::GuildCreate { guild, is_new } => {
+            debug!("Entered guild {:?}. is_new: {:?}", guild.id, is_new);
+
+            if *is_new {
+                return Ok(());
+            }
+
+            sqlx::query!("UPDATE servers SET name_cached = $1, state = old_state WHERE guild_id = $2 AND state = 3", 
+                         guild.name, 
+                         guild.id.0 as i64)
+                .execute(&user_data.pool)
+                .await?; 
+        },
+
         poise::Event::Ready { data_about_bot } => {
             info!("{} is connected!", data_about_bot.user.name);
 
@@ -1258,13 +1260,11 @@ async fn main() {
                 voteserver(),
                 help(), 
                 register(), 
-                about(), 
+                version(), 
                 queue(), 
-                serverlist(), 
                 lynx(), 
                 disablevr(), 
                 vrchannel(), 
-                test_mc(),
                 serverlist::set(), 
                 serverlist::dumpserver(), 
                 serverlist::auditlogs(),
@@ -1280,6 +1280,7 @@ async fn main() {
                     ..serverlist::tags()
                 },
                 serverlist::delserver(),
+                serverlist::denyserver(),
             ],
             ..poise::FrameworkOptions::default()
         })

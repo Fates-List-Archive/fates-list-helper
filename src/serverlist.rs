@@ -1113,7 +1113,7 @@ pub async fn set(
     .await?;
 
 
-    ctx.say(format!("Set {:?} successfully. Either use /dumpserver or check out your server page!\n\nIf you wish to delete your server from server listing at any time, use `/delserver`. Fates List is not responsible for any harm caused by using Fates List Server Listing. *Please read our server listing rules available at https://lynx.fateslist.xyz/privacy#server-listing to ensure everyone has a good experience*", field)).await?;
+    ctx.say(format!("Set {:?} successfully. Either use /dumpserver or check out your server page!\n\nIf you wish to delete your server from server listing at any time, use `/delserver`. Fates List is not responsible for any harm caused by using Fates List Server Listing. *Please read our server listing rules available at https://lynx.fateslist.xyz/privacy#server-listing to ensure everyone has a good experience*\n\nYour servers name and icon has also been updated on the site", field)).await?;
 
     Ok(())
 }

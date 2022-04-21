@@ -228,6 +228,56 @@ pub async fn staff(_ctx: Context<'_>) -> Result<(), Error> {
 
 /// Lynx Bridge. STAFF ONLY. Used for verifying bots
 #[poise::command(slash_command)]
+pub async fn claim(
+    ctx: Context<'_>,
+    #[description = "Bot ID"] 
+    bot_id: String, 
+) -> Result<(), Error> {
+    lynx(ctx, LynxActionType::Bot, LynxAction::Claim, bot_id, "STUB_REASON".to_string()).await?;
+    Ok(())
+}
+
+/// Lynx Bridge. STAFF ONLY. Used for verifying bots
+#[poise::command(slash_command)]
+pub async fn unclaim(
+    ctx: Context<'_>,
+    #[description = "Bot ID"] 
+    bot_id: String, 
+    #[description = "Reason"]
+    reason: String,
+) -> Result<(), Error> {
+    lynx(ctx, LynxActionType::Bot, LynxAction::Unclaim, bot_id, reason).await?;
+    Ok(())
+}
+
+/// Lynx Bridge. STAFF ONLY. Used for verifying bots
+#[poise::command(slash_command)]
+pub async fn requeue(
+    ctx: Context<'_>,
+    #[description = "Bot ID"] 
+    bot_id: String, 
+    #[description = "Reason"]
+    reason: String,
+) -> Result<(), Error> {
+    lynx(ctx, LynxActionType::Bot, LynxAction::Requeue, bot_id, reason).await?;
+    Ok(())
+}
+
+/// Lynx Bridge. STAFF ONLY. Used for verifying bots
+#[poise::command(slash_command)]
+pub async fn unverify(
+    ctx: Context<'_>,
+    #[description = "Bot ID"] 
+    bot_id: String, 
+    #[description = "Reason"]
+    reason: String,
+) -> Result<(), Error> {
+    lynx(ctx, LynxActionType::Bot, LynxAction::Unverify, bot_id, reason).await?;
+    Ok(())
+}
+
+/// Lynx Bridge. STAFF ONLY. Used for verifying bots
+#[poise::command(slash_command)]
 pub async fn approve(
     ctx: Context<'_>,
     #[description = "Bot ID"] 

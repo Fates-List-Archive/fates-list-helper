@@ -1133,6 +1133,10 @@ async fn main() {
                 queue(), 
                 poise::Command {
                     subcommands: vec![
+                        staff::claim(),
+                        staff::unclaim(),
+                        staff::requeue(),
+                        staff::unverify(),
                         staff::approve(),
                         staff::deny(),
                         staff::ban(),

@@ -3,8 +3,7 @@ use rand::{thread_rng, Rng};
 use rand::distributions::Alphanumeric;
 use std::borrow::Cow;
 use crate::helpers;
-use serde_repr::Deserialize_repr;
-use serde_repr::Serialize_repr;
+use bristlefrost::models::{LongDescriptionType, State, WebhookType};
 
 type Error = crate::Error;
 type Context<'a> = crate::Context<'a>;
@@ -578,22 +577,16 @@ pub enum SetField {
     #[name = "Banner (server card)"] BannerCard,
     #[name = "Banner (server page)"] BannerPage, 
     #[name = "Keep Banner Decorations"] KeepBannerDecor, 
-    #[name = "Vanity"] Vanity, 
+    #[name = "Vanity"] Vanity,
+    #[name = "State"] State,
     #[name = "Webhook URL"] WebhookURL, 
+    #[name = "Webhook Type"] WebhookType, 
     #[name = "Webhook Secret"] WebhookSecret, 
     #[name = "Webhook HMAC Only"] WebhookHMACOnly,
     #[name = "Requires Login To Join"] RequiresLogin, 
     #[name = "Vote Roles"] VoteRoles, 
     #[name = "Whitelist Only"] WhitelistOnly, 
     #[name = "Whitelist Form"] WhitelistForm, // Done till here
-}
-
-#[derive(Eq, Serialize_repr, Deserialize_repr, PartialEq, Clone, Copy, Default)]
-#[repr(i32)]
-pub enum LongDescriptionType {
-    Html = 0,
-    #[default]
-    MarkdownServerSide = 1,
 }
 
 fn create_token(length: usize) -> String {
@@ -605,13 +598,13 @@ fn create_token(length: usize) -> String {
 }
 
 async fn deny_server(data: &Data, guild_id: i64) -> Result<(), Error> {
-    sqlx::query!("UPDATE servers SET old_state = state, state = 2, name_cached = 'Unknown', avatar_cached = '' WHERE guild_id = $1", guild_id).execute(&data.pool).await?;
+    sqlx::query!("UPDATE servers SET old_state = state, state = $1, name_cached = 'Unknown', avatar_cached = '' WHERE guild_id = $2", State::Denied as i32, guild_id).execute(&data.pool).await?;
 
     Ok(())
 }
 
 async fn ban_server(data: &Data, guild_id: i64) -> Result<(), Error> {
-    sqlx::query!("UPDATE servers SET old_state = state, state = 5, name_cached = 'Unknown', avatar_cached = '' WHERE guild_id = $1", guild_id).execute(&data.pool).await?;
+    sqlx::query!("UPDATE servers SET old_state = state, state = $1, name_cached = 'Unknown', avatar_cached = '' WHERE guild_id = $2", State::Banned as i32, guild_id).execute(&data.pool).await?;
 
     Ok(())
 }
@@ -1144,6 +1137,33 @@ pub async fn set(
                 },
             }
         },
+        SetField::State => {
+            let state = match value.as_str() {
+                "public" | "approved" | "0" => State::Approved,
+                "private_viewable" | "8" => State::PrivateViewable,
+                _ => {
+                    ctx.say("State must be either `public`/`approved` (`0`) or `private_viewable` (`8`)").await?;
+                    return Ok(());
+                }
+            };
+
+            let check = sqlx::query!("SELECT state FROM servers WHERE guild_id = $1", ctx.guild().unwrap().id.0 as i64)
+                .fetch_one(&data.pool)
+                .await?;
+
+            if check.state != (State::Approved as i32) {
+                ctx.say("You cannot perform this action at this time. Is your bot flagged, denied, banned, certified or pending review?") .await?;
+                return Ok(())
+            }
+
+            sqlx::query!(
+                "UPDATE servers SET state = $1 WHERE guild_id = $2",
+                state as i32,
+                ctx.guild().unwrap().id.0 as i64
+            )
+            .execute(&data.pool)
+            .await?;
+        },
         SetField::WebhookURL => {
             if !value.starts_with("https://") && value != *"" {
                 ctx.say("Webhook URL must start with https://").await?;
@@ -1153,6 +1173,24 @@ pub async fn set(
             sqlx::query!(
                 "UPDATE servers SET webhook = $1 WHERE guild_id = $2",
                 value,
+                ctx.guild().unwrap().id.0 as i64
+            )
+            .execute(&data.pool)
+            .await?;
+        },
+        SetField::WebhookType => {
+            let webhook_type = match value.as_str() {
+                "vote" | "0" => WebhookType::Vote,
+                "discord" | "1" => WebhookType::DiscordIntegration,
+                _ => {
+                    ctx.say("Webhook type must be either `vote` (`0`) or `discord` (`1`)").await?;
+                    return Ok(());
+                }
+            };
+
+            sqlx::query!(
+                "UPDATE servers SET webhook_type = $1 WHERE guild_id = $2",
+                webhook_type as i32,
                 ctx.guild().unwrap().id.0 as i64
             )
             .execute(&data.pool)

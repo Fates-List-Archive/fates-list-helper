@@ -21,6 +21,7 @@ chrono = { version = "0.4.19", features = ["serde"]}
 bigdecimal = { version = "0.2.2", features = ["serde"] }
 thiserror = "1.0"
 rand = "0.8.5"
+bristlefrost = { git = "https://github.com/Fates-List/bristlefrost" }
 
 [dependencies.tokio]
 version = "1"

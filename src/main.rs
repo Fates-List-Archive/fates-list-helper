@@ -19,6 +19,7 @@ use poise::futures_util::SinkExt;
 use bigdecimal::BigDecimal;
 use bigdecimal::FromPrimitive;
 use bigdecimal::ToPrimitive;
+use bristlefrost::models::State;
 
 pub struct Data {pool: sqlx::PgPool, client: reqwest::Client, key_data: KeyData}
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -742,7 +743,7 @@ async fn event_listener(
         poise::Event::GuildDelete { incomplete, full: _ } => {
             debug!("Left guild {:?}", incomplete.id);
 
-            sqlx::query!("UPDATE servers SET old_state = state, state = 3 WHERE guild_id = $1", incomplete.id.0 as i64)
+            sqlx::query!("UPDATE servers SET old_state = state, state = $1 WHERE guild_id = $2", State::Hidden as i32, incomplete.id.0 as i64)
                 .execute(&user_data.pool)
                 .await?;
         },
@@ -752,9 +753,11 @@ async fn event_listener(
                 return Ok(());
             }
 
-            sqlx::query!("UPDATE servers SET name_cached = $1, state = old_state WHERE guild_id = $2 AND state = 3", 
+            sqlx::query!("UPDATE servers SET name_cached = $1, state = old_state WHERE guild_id = $2 AND state = $3", 
                          guild.name, 
-                         guild.id.0 as i64)
+                         guild.id.0 as i64,
+                         State::Hidden as i32
+            )
                 .execute(&user_data.pool)
                 .await?; 
         },

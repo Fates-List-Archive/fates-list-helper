@@ -6,16 +6,13 @@ use std::fs::File;
 use std::io::Read;
 use std::env;
 use std::path::PathBuf;
-use serde::{Serialize, Deserialize};
+use serde::Deserialize;
 use sqlx::postgres::PgPoolOptions;
 use std::process::Command;
 use std::time::Duration;
 use tokio::{task, time};
 use std::sync::Arc;
 use poise::serenity_prelude::Mentionable;
-use async_tungstenite::{tokio::connect_async, tungstenite::Message, tungstenite::protocol::CloseFrame, tungstenite::protocol::frame::coding::CloseCode, tungstenite::client::IntoClientRequest};
-use poise::futures_util::StreamExt;
-use poise::futures_util::SinkExt;
 use bigdecimal::BigDecimal;
 use bigdecimal::FromPrimitive;
 use bigdecimal::ToPrimitive;
@@ -27,7 +24,7 @@ type Context<'a> = poise::Context<'a, Data, Error>;
 
 mod helpers;
 mod serverlist;
-
+mod staff;
 
 /// Display your or another user's account creation date. Is a test command
 #[poise::command(prefix_command, slash_command)]
@@ -184,7 +181,7 @@ async fn vote(
     Ok(())
 }
 
-async fn autocomplete_vr(
+async fn autocomplete_vr_bot(
     ctx: Context<'_>,
     _partial: String
 ) -> Vec<poise::AutocompleteChoice<String>> {
@@ -205,6 +202,36 @@ async fn autocomplete_vr(
 
     let mut choices = Vec::new();
     for choice in row.vote_reminders {
+        choices.push(poise::AutocompleteChoice {
+            name: choice.to_string(),
+            value: choice.to_string(),
+        });
+    }
+
+    choices
+}
+
+async fn autocomplete_vr_server(
+    ctx: Context<'_>,
+    _partial: String
+) -> Vec<poise::AutocompleteChoice<String>> {
+    let data = ctx.data();
+
+    let row = sqlx::query!(
+        "SELECT vote_reminders_servers FROM users WHERE user_id = $1",
+        ctx.author().id.0 as i64
+        )
+        .fetch_one(&data.pool)
+        .await;
+
+    if row.is_err() {
+        return Vec::new();
+    }
+
+    let row = row.unwrap();
+
+    let mut choices = Vec::new();
+    for choice in row.vote_reminders_servers {
         choices.push(poise::AutocompleteChoice {
             name: choice.to_string(),
             value: choice.to_string(),
@@ -275,7 +302,7 @@ async fn vrchannel(
     Ok(())
 }
 
-/// Disable vote reminders for a bot
+/// Disablevr base command
 #[poise::command(
     track_edits, 
     prefix_command,
@@ -283,8 +310,22 @@ async fn vrchannel(
 )]
 async fn disablevr(
     ctx: Context<'_>,
+)  -> Result<(), Error> {
+    ctx.say("Available options are ``disablevr bot``, ``disablevr server``").await?;
+    Ok(())
+}
+
+/// Disable vote reminders for a bot
+#[poise::command(
+    track_edits, 
+    prefix_command,
+    slash_command,
+    rename = "bot"
+)]
+async fn disablevr_bot(
+    ctx: Context<'_>,
     #[description = "Bot ID to disable vote reminders for"]
-    #[autocomplete = "autocomplete_vr"]
+    #[autocomplete = "autocomplete_vr_bot"]
     bot_id: Option<String>,
 )  -> Result<(), Error> {
 
@@ -332,235 +373,64 @@ async fn disablevr(
     Ok(())
 }
 
-#[derive(poise::ChoiceParameter)]
-enum LynxActionType {
-    #[name = "bot"] 
-    Bot,
-    #[name = "user"] 
-    User,
-}
-
-#[derive(poise::ChoiceParameter, Debug)]
-enum LynxAction {
-    #[name = "Claim"] 
-    Claim,
-    #[name = "Unclaim"] 
-    Unclaim,
-    #[name = "Approve"]
-    Approve,
-    #[name = "Deny"]
-    Deny,
-    #[name = "Requeue"]
-    Requeue,
-    #[name = "Unverify"]
-    Unverify,
-    #[name = "Ban"]
-    Ban,
-    #[name = "Unban"]
-    Unban,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(untagged)]
-enum LynxPayload {
-    RespError {
-        resp: String,
-        detail: String,
-    },
-    RespWithScript {
-        resp: String,
-        script: String
-    },
-    PlainResp {
-        resp: String,
-    },
-    DetailOnly {
-        detail: String
-    },
-    // Internal parse error
-    InternalParseError {
-        error: String,
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-struct LynxActionData {
-    bot_id: Option<String>,
-    user_id: Option<String>,
-    reason: String,
-    context: Option<String>
-}
-
-#[derive(Serialize, Deserialize)]
-struct LynxPayloadSend {
-    request: String,
-    action: String,
-    action_data: LynxActionData,
-}
-
-/// Lynx Bridge. STAFF ONLY. Used for verifying bots
-#[poise::command(slash_command)]
-async fn lynx(
+/// Disable vote reminders for a server
+#[poise::command(
+    track_edits, 
+    prefix_command,
+    slash_command,
+    rename = "server"
+)]
+async fn disablevr_server(
     ctx: Context<'_>,
-    #[description = "Action type"]
-    action_type: LynxActionType,
-    #[description = "Action on Lynx"]
-    action: LynxAction,
-    #[description = "ID"]
-    id: String,
-    #[description = "Reason"]
-    reason: String,
+    #[description = "Server ID to disable vote reminders for"]
+    #[autocomplete = "autocomplete_vr_server"]
+    server_id: Option<String>,
 )  -> Result<(), Error> {
-
-    let id_i64 = id.parse::<i64>();
-
-    if id_i64.is_err() {
-        ctx.say("ID must be a i64").await?;
-        return Ok(())
-    }
 
     let data = ctx.data();
 
-    let row = sqlx::query!(
-        "SELECT api_token FROM users WHERE user_id = $1",
-        ctx.author().id.0 as i64
-    )
-    .fetch_one(&data.pool)
-    .await;
+    if server_id.is_none() {
+        let row = sqlx::query!(
+            "SELECT vote_reminders_servers FROM users WHERE user_id = $1",
+            ctx.author().id.0 as i64
+            )
+            .fetch_one(&data.pool)
+            .await;
 
-    if row.is_err() {
-        ctx.say("Unauthorized").await?;
-        return Ok(());
-    }
-
-    let api_token = row.unwrap().api_token;
-
-    // Now create WS connection
-    let lynx_json = serde_json::json!({
-        "user": {
-            "id": ctx.author().id.0.to_string(),
-            "username": "Squirrelflight-Virtual",
-            "disc": "0000",
-            "avatar": "https://cdn.discordapp.com/avatars/723456789012345678/723456789012345678.png?size=1024",
-            "bot": false,
-            "status": "Unknown",
-        },
-        "token": api_token,
-    });
-
-    let lynx_json_val = serde_json::to_string(&lynx_json).unwrap();
-    let lynx_json_b64 = base64::encode(lynx_json_val);
-
-    ctx.say("[DEBUG] Connecting to Lynx...").await?;
-
-    let mut req = "wss://lynx.fateslist.xyz/_ws?cli=BurdockRoot%40NODBG&plat=SQUIRREL".into_client_request()?;
-    *req.uri_mut() = http::Uri::builder()
-        .scheme("wss")
-        .authority("lynx.fateslist.xyz")
-        .path_and_query("/_ws?cli=BurdockRoot%40NODBG&plat=SQUIRREL")
-        .build()
-        .unwrap();
-    req.headers_mut().insert("Origin", "https://lynx.fateslist.xyz".parse().unwrap());
-    req.headers_mut().insert("User-Agent", "Squirrelflight/0.1".parse().unwrap());
-    req.headers_mut().insert("Cookie", format!("sunbeam-session:warriorcats={}", lynx_json_b64).parse().unwrap());
-    
-    let (ws_stream, _) = connect_async(req).await?;
-
-    let (mut write, mut read) = ws_stream.split();
-
-    // Send action
-    ctx.say(format!("[DEBUG] Sending request for action {:?}", action)).await?;
-
-    let action_type_send = match action_type {
-        LynxActionType::Bot => "bot_action".to_string(),
-        LynxActionType::User => "user_action".to_string(),
-    };
-
-    let action_str = match action {
-        LynxAction::Claim => "claim",
-        LynxAction::Unclaim => "unclaim",
-        LynxAction::Approve => "approve",
-        LynxAction::Deny => "deny",
-        LynxAction::Requeue => "requeue",
-        LynxAction::Unverify => "unverify",
-        LynxAction::Ban => "ban",
-        LynxAction::Unban => "unban",
-    };
-
-    let mut action_dat = LynxPayloadSend {
-        request: action_type_send.clone(),
-        action: action_str.to_string(),
-        action_data: LynxActionData {
-            bot_id: None,
-            user_id: None,
-            context: None,
-            reason,
-        },
-    };
-
-    match action_type {
-        LynxActionType::Bot => {
-            action_dat.action_data.bot_id = Some(id);
-        },
-        LynxActionType::User => {
-            action_dat.action_data.user_id = Some(id);
-        },
-    }
-
-    // JSON serialize and send, then wait for next event
-    write.send(Message::Text(serde_json::to_string(&action_dat).unwrap())).await?;
-
-    loop {
-        let msg = read.next().await;
-
-        if msg.is_none() {
-            continue;
-        }
-        let msg = msg.unwrap();
-        if msg.is_err() {
-            // Close the conn
-            ctx.say("[ERROR] Lynx connection closed (reason=ErrWsMsg)...").await?;
-            write.send(Message::Close(Some(CloseFrame {
-                code: CloseCode::Normal,
-                reason: "Squirrelflight Command Error".into(),
-            }))).await?;
-            return Ok(())
-        }
-
-        let msg = msg.unwrap();
-
-        let resp_msg = match msg {
-            Message::Text(msg) => msg,
-            Message::Ping(_) => {
-                write.send(Message::Pong(Vec::new())).await?;
-                continue;
-            },
-            _ => continue,
-        };
-
-        // Serde serialize
-        let data: LynxPayload = serde_json::from_str(&resp_msg).unwrap_or_else(|err| {
-            LynxPayload::InternalParseError {
-                error: format!("{:?}", err),
-            }
-        });
         
-        match data {
-            LynxPayload::RespError {resp, detail} => {
-                if resp != action_type_send {
-                    continue
-                }
-                ctx.say(format!("[RESPONSE] {:?}", detail)).await?;
-                write.send(Message::Close(Some(CloseFrame {
-                    code: CloseCode::Normal,
-                    reason: "Squirrelflight Command Done".into(),
-                }))).await?; 
-                return Ok(())
-            },
-            _ => continue
+        let mut text = "Vote reminders enabled: ".to_string();
+
+        for choice in row.unwrap().vote_reminders_servers {
+            text += &(choice.to_string() + ", ");
         }
+    
+        ctx.say(text).await?;
+    } else {
+        let server_id = server_id.unwrap();
+
+        let server_id = server_id.parse::<i64>();
+
+        if server_id.is_err() {
+            ctx.say("Server id must be a i64").await?;
+            return Ok(());
+        }
+
+        let server_id = server_id.unwrap();
+
+        sqlx::query!(
+            "UPDATE users SET vote_reminders_servers = array_remove(vote_reminders_servers, $1) WHERE user_id = $2",
+            server_id,
+            ctx.author().id.0 as i64
+        )
+        .execute(&data.pool)
+        .await?;
+
+        ctx.say(format!("Vote reminders disabled for {}", server_id)).await?;
     }
+
+    Ok(())
 }
+
 
 /// Show this help menu
 #[poise::command(track_edits, prefix_command, slash_command)]
@@ -570,10 +440,6 @@ async fn help(
     #[autocomplete = "poise::builtins::autocomplete_command"]
     command: Option<String>,
 ) -> Result<(), Error> {
-    if ctx.author().id.0 == 563808552288780322 {
-        poise::builtins::register_application_commands(ctx, true).await?;
-        poise::builtins::register_application_commands(ctx, false).await?;
-    }
     poise::builtins::help(
         ctx,
         command.as_deref(),
@@ -653,7 +519,7 @@ async fn queue(ctx: Context<'_>) -> Result<(), Error> {
 /// Register application commands in this guild or globally
 ///
 /// Run with no arguments to register in guild, run with argument "global" to register globally.
-#[poise::command(slash_command, owners_only, track_edits)]
+#[poise::command(prefix_command, slash_command, owners_only, track_edits)]
 async fn register(ctx: Context<'_>, #[flag] #[description = "Global or no global registration"] global: bool) -> Result<(), Error> {
     poise::builtins::register_application_commands(ctx, global).await?;
 
@@ -1265,8 +1131,22 @@ async fn main() {
                 register(), 
                 version(), 
                 queue(), 
-                lynx(), 
-                disablevr(), 
+                poise::Command {
+                    subcommands: vec![
+                        staff::approve(),
+                        staff::deny(),
+                        staff::ban(),
+                        staff::unban()
+                    ],
+                    ..staff::staff()
+                },
+                poise::Command {
+                    subcommands: vec![
+                        disablevr_bot(),
+                        disablevr_server(),
+                    ],
+                    ..disablevr()
+                },
                 vrchannel(), 
                 serverlist::set(), 
                 serverlist::dumpserver(), 

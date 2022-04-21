@@ -13,6 +13,7 @@ type Data = crate::Data;
 /// Deletes the server from Fates List Server Listing
 #[poise::command(
     track_edits, 
+    prefix_command,
     slash_command,
     guild_cooldown = 10, required_permissions = "ADMINISTRATOR"
 )]
@@ -51,7 +52,7 @@ pub async fn delserver(
 
 
 /// Tag base command
-#[poise::command(slash_command, guild_cooldown = 10, required_permissions = "SEND_MESSAGES")]
+#[poise::command(prefix_command, slash_command, guild_cooldown = 10, required_permissions = "SEND_MESSAGES")]
 pub async fn tags(
     ctx: Context<'_>,
 ) -> Result<(), Error> {
@@ -370,7 +371,7 @@ pub async fn tag_transfer(
 }
 
 /// Dumps a tag
-#[poise::command(slash_command, guild_cooldown = 10, required_permissions = "MANAGE_GUILD", rename = "dump")]
+#[poise::command(prefix_command, slash_command, guild_cooldown = 10, required_permissions = "MANAGE_GUILD", rename = "dump")]
 pub async fn tag_dump(
     ctx: Context<'_>,
     #[description = "Tag name or internal name"]
@@ -616,7 +617,7 @@ async fn ban_server(data: &Data, guild_id: i64) -> Result<(), Error> {
 }
 
 /// Deny and anonymize a server on server listing
-#[poise::command(track_edits, slash_command, owners_only)] 
+#[poise::command(track_edits, prefix_command, slash_command, owners_only)] 
 pub async fn banserver(
     ctx: Context<'_>,
     #[description = "Guild to ban"]
@@ -649,7 +650,7 @@ pub enum AllowlistAction {
 
 
 /// Modify the server allow list to control who can access a server
-#[poise::command(track_edits, slash_command, guild_cooldown = 5, guild_only, required_permissions = "ADMINISTRATOR")]
+#[poise::command(track_edits, prefix_command, slash_command, guild_cooldown = 5, guild_only, required_permissions = "ADMINISTRATOR")]
 pub async fn allowlist(
     ctx: Context<'_>,
     #[description = "List to change"]
@@ -773,7 +774,7 @@ pub async fn allowlist(
 }
 
 /// Sets a field. This adds your server to the server list.
-#[poise::command(track_edits, slash_command, guild_cooldown = 5, guild_only, required_permissions = "MANAGE_GUILD")]
+#[poise::command(track_edits, prefix_command, slash_command, guild_cooldown = 5, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn set(
     ctx: Context<'_>,
     #[description = "Field to set"]

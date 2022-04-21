@@ -29,7 +29,7 @@ mod serverlist;
 
 
 /// Display your or another user's account creation date. Is a test command
-#[poise::command(slash_command)]
+#[poise::command(prefix_command, slash_command)]
 async fn accage(
     ctx: Context<'_>,
     #[description = "Selected user"] user: Option<serenity::User>,
@@ -110,7 +110,7 @@ async fn voteserver(
 }
 
 /// Votes for a bot. Takes a bot as its only parameter
-#[poise::command(slash_command, track_edits)]
+#[poise::command(slash_command, prefix_command, track_edits)]
 async fn vote(
     ctx: Context<'_>,
     #[description = "Bot to vote for"] bot: serenity::User,
@@ -224,6 +224,7 @@ enum BotServer {
 /// Set the channel to send vote reminders to.
 #[poise::command(
     track_edits, 
+    prefix_command,
     slash_command
 )]
 async fn vrchannel(
@@ -276,6 +277,7 @@ async fn vrchannel(
 /// Disable vote reminders for a bot
 #[poise::command(
     track_edits, 
+    prefix_command,
     slash_command
 )]
 async fn disablevr(
@@ -560,7 +562,7 @@ async fn lynx(
 }
 
 /// Show this help menu
-#[poise::command(track_edits, slash_command)]
+#[poise::command(track_edits, prefix_command, slash_command)]
 async fn help(
     ctx: Context<'_>,
     #[description = "Specific command to show help about"]

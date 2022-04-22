@@ -1143,6 +1143,7 @@ async fn main() {
                         staff::unban(),
                         staff::denyserver(),
                         staff::banserver(),
+                        staff::enableserver()
                     ],
                     ..staff::staff()
                 },

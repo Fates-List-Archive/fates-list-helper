@@ -327,3 +327,31 @@ pub async fn unban(
     lynx(ctx, LynxActionType::Bot, LynxAction::Unban, bot_id, reason).await?;
     Ok(())
 }
+
+/// Deny and anonymize a server on server listing
+#[poise::command(track_edits, prefix_command, slash_command, owners_only)]
+pub async fn denyserver(
+    ctx: Context<'_>,
+    #[description = "Guild to deny"]
+    guild_id: String,
+) -> Result<(), Error> {
+    let guild_id: i64 = guild_id.parse()?;
+    let data = ctx.data();
+    serverlist::deny_server(data, guild_id).await?;
+    ctx.say("Server denied. Note that denies should only be used when small changes/a warning are needed and that these can easily be undone through ``/set``").await?;
+    Ok(())
+}
+
+/// Ban and anonymize a server on server listing
+#[poise::command(track_edits, prefix_command, slash_command, owners_only)] 
+pub async fn banserver(
+    ctx: Context<'_>,
+    #[description = "Guild to ban"]
+    guild_id: String,
+) -> Result<(), Error> {
+    let guild_id: i64 = guild_id.parse()?;
+    let data = ctx.data();
+    serverlist::ban_server(data, guild_id).await?;
+    ctx.say("Server banned.").await?;
+    Ok(())
+}

@@ -597,29 +597,15 @@ fn create_token(length: usize) -> String {
     .collect()
 }
 
-async fn deny_server(data: &Data, guild_id: i64) -> Result<(), Error> {
+pub async fn deny_server(data: &Data, guild_id: i64) -> Result<(), Error> {
     sqlx::query!("UPDATE servers SET old_state = state, state = $1, name_cached = 'Unknown', avatar_cached = '' WHERE guild_id = $2", State::Denied as i32, guild_id).execute(&data.pool).await?;
 
     Ok(())
 }
 
-async fn ban_server(data: &Data, guild_id: i64) -> Result<(), Error> {
+pub async fn ban_server(data: &Data, guild_id: i64) -> Result<(), Error> {
     sqlx::query!("UPDATE servers SET old_state = state, state = $1, name_cached = 'Unknown', avatar_cached = '' WHERE guild_id = $2", State::Banned as i32, guild_id).execute(&data.pool).await?;
 
-    Ok(())
-}
-
-/// Deny and anonymize a server on server listing
-#[poise::command(track_edits, prefix_command, slash_command, owners_only)] 
-pub async fn banserver(
-    ctx: Context<'_>,
-    #[description = "Guild to ban"]
-    guild_id: String,
-) -> Result<(), Error> {
-    let guild_id: i64 = guild_id.parse()?;
-    let data = ctx.data();
-    ban_server(data, guild_id).await?;
-    ctx.say("Server denied").await?;
     Ok(())
 }
 
@@ -1151,7 +1137,7 @@ pub async fn set(
                 .fetch_one(&data.pool)
                 .await?;
 
-            if check.state != (State::Approved as i32) {
+            if check.state != (State::Approved as i32) && check.state != (State::PrivateViewable as i32) {
                 ctx.say("You cannot perform this action at this time. Is your bot flagged, denied, banned, certified or pending review?") .await?;
                 return Ok(())
             }

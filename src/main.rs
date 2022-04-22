@@ -1140,7 +1140,9 @@ async fn main() {
                         staff::approve(),
                         staff::deny(),
                         staff::ban(),
-                        staff::unban()
+                        staff::unban(),
+                        staff::denyserver(),
+                        staff::banserver(),
                     ],
                     ..staff::staff()
                 },
@@ -1168,7 +1170,6 @@ async fn main() {
                     ..serverlist::tags()
                 },
                 serverlist::delserver(),
-                serverlist::banserver(),
             ],
             ..poise::FrameworkOptions::default()
         })

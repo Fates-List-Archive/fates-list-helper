@@ -2,6 +2,7 @@ use async_tungstenite::{tokio::connect_async, tungstenite::Message, tungstenite:
 use serde::{Serialize, Deserialize};
 use poise::futures_util::StreamExt;
 use poise::futures_util::SinkExt;
+use crate::serverlist;
 
 type Error = crate::Error;
 type Context<'a> = crate::Context<'a>;
@@ -12,7 +13,7 @@ enum LynxActionType {
     User,
 }
 
-#[derive(poise::ChoiceParameter, Debug)]
+#[derive(Debug)]
 enum LynxAction {
     Claim,
     Unclaim,
@@ -329,7 +330,7 @@ pub async fn unban(
 }
 
 /// Deny and anonymize a server on server listing
-#[poise::command(track_edits, prefix_command, slash_command, owners_only)]
+#[poise::command(prefix_command, slash_command, owners_only)]
 pub async fn denyserver(
     ctx: Context<'_>,
     #[description = "Guild to deny"]
@@ -343,7 +344,7 @@ pub async fn denyserver(
 }
 
 /// Ban and anonymize a server on server listing
-#[poise::command(track_edits, prefix_command, slash_command, owners_only)] 
+#[poise::command(prefix_command, slash_command, owners_only)] 
 pub async fn banserver(
     ctx: Context<'_>,
     #[description = "Guild to ban"]
@@ -353,5 +354,19 @@ pub async fn banserver(
     let data = ctx.data();
     serverlist::ban_server(data, guild_id).await?;
     ctx.say("Server banned.").await?;
+    Ok(())
+}
+
+/// Re-enables a server
+#[poise::command(prefix_command, slash_command, owners_only)]
+pub async fn enableserver(
+    ctx: Context<'_>,
+    #[description = "Guild to re-enable"]
+    guild_id: String,
+) -> Result<(), Error> {
+    let guild_id: i64 = guild_id.parse()?;
+    let data = ctx.data();
+    serverlist::enable_server(data, guild_id).await?;
+    ctx.say("Server re-enabled. Ask server admins to run ``/set`` again").await?;
     Ok(())
 }

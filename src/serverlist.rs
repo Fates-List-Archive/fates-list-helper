@@ -11,7 +11,6 @@ type Data = crate::Data;
 
 /// Deletes the server from Fates List Server Listing
 #[poise::command(
-    track_edits, 
     prefix_command,
     slash_command,
     guild_cooldown = 10, required_permissions = "ADMINISTRATOR"
@@ -495,7 +494,7 @@ pub async fn auditlogs(
 }
 
 /// Dumps the server data to a file for viewing.
-#[poise::command(prefix_command, track_edits, slash_command, guild_cooldown = 10, required_permissions = "ADMINISTRATOR")]
+#[poise::command(prefix_command, slash_command, guild_cooldown = 10, required_permissions = "ADMINISTRATOR")]
 pub async fn dumpserver(
     ctx: Context<'_>,
 ) -> Result<(), Error> {
@@ -603,6 +602,12 @@ pub async fn deny_server(data: &Data, guild_id: i64) -> Result<(), Error> {
     Ok(())
 }
 
+pub async fn enable_server(data: &Data, guild_id: i64) -> Result<(), Error> {
+    sqlx::query!("UPDATE servers SET old_state = state, state = $1, name_cached = '', avatar_cached = '' WHERE guild_id = $2", State::Approved as i32, guild_id).execute(&data.pool).await?;
+
+    Ok(())
+}
+
 pub async fn ban_server(data: &Data, guild_id: i64) -> Result<(), Error> {
     sqlx::query!("UPDATE servers SET old_state = state, state = $1, name_cached = 'Unknown', avatar_cached = '' WHERE guild_id = $2", State::Banned as i32, guild_id).execute(&data.pool).await?;
 
@@ -646,25 +651,6 @@ pub async fn allowlist(
 
     let guild = ctx.guild().unwrap();
     let data = ctx.data();
-
-    let state = sqlx::query!(
-        "SELECT state FROM servers WHERE guild_id = $1",
-        guild.id.0 as i64
-    )
-    .fetch_one(&data.pool)
-    .await?;
-
-    if state.state == 4 {
-        ctx.say("Your server has been banned due to breaking our rules. Please contact Fates List Staff if you wish to appeal").await?;
-        return Ok(());
-    } else if state.state == 2 {
-        sqlx::query!(
-            "UPDATE servers SET state = old_state WHERE guild_id = $1",
-            guild.id.0 as i64
-        )
-        .execute(&data.pool)
-        .await?;
-    }
 
     match field {
         Allowlist::Whitelist => {
@@ -860,16 +846,15 @@ pub async fn set(
     .fetch_one(&data.pool)
     .await?;
 
-    if state.state == 4 {
-        ctx.say("Your server has been banned due to breaking our rules. Please contact Fates List Staff if you wish to appeal").await?;
-        return Ok(());
-    } else if state.state == 2 {
-        sqlx::query!(
-            "UPDATE servers SET state = old_state WHERE guild_id = $1",
-            guild.id.0 as i64
-        )
-        .execute(&data.pool)
-        .await?;
+    if state.state == (State::Banned as i32) {
+        ctx.say("
+**Your server has been banned due to breaking our rules. 
+
+Please contact Fates List Staff if you wish to appeal. 
+        
+Note that ``/set`` and other commands will still work to allow you to make any required changes**").await?;
+    } else if state.state == (State::Denied as i32) {
+        enable_server(data, guild.id.0 as i64).await?;
     }
 
     // Force HTTP(s)

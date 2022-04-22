@@ -1091,6 +1091,15 @@ Note that ``/set`` and other commands will still work to allow you to make any r
 
             match check {
                 Err(sqlx::Error::RowNotFound) => {
+                    // Remove old vanity
+                    sqlx::query!(
+                        "DELETE FROM vanity WHERE redirect = $1",
+                        guild.id.0 as i64
+                    )
+                    .execute(&data.pool)
+                    .await?;
+                    
+                    // Add new vanity
                     sqlx::query!("INSERT INTO vanity (type, vanity_url, redirect) VALUES ($1, $2, $3)", 
                     0, 
                     value,

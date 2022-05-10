@@ -494,7 +494,7 @@ async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     let mut i = 1;
 
     for row in rows {
-        let mut name = row.username_cached.unwrap_or_else(|| "Username not cached".to_string());
+        let mut name = row.username_cached;
         if name.is_empty() {
             name = "Username not cached".to_string();
         }

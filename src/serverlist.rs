@@ -3,6 +3,7 @@ use rand::{thread_rng, Rng};
 use rand::distributions::Alphanumeric;
 use std::borrow::Cow;
 use crate::helpers;
+use serde_json::json;
 use bristlefrost::models::{LongDescriptionType, State, WebhookType};
 
 type Error = crate::Error;
@@ -840,7 +841,7 @@ pub async fn set(
     .await?;
 
     let state = sqlx::query!(
-        "SELECT state FROM servers WHERE guild_id = $1",
+        "SELECT state, extra_links FROM servers WHERE guild_id = $1",
         guild.id.0 as i64
     )
     .fetch_one(&data.pool)
@@ -1022,9 +1023,24 @@ Note that ``/set`` and other commands will still work to allow you to make any r
                 return Ok(());
             }
 
+            let mut extra_links = state.extra_links.clone();
+
+            let extra_links = extra_links.as_object_mut().unwrap();
+
+            if extra_links.contains_key("Website") {
+                extra_links.remove("Website");
+            } 
+            else if extra_links.contains_key("website") {
+                extra_links.remove("website");
+            }
+            
+            if value != *"" {
+                extra_links.insert("website".to_string(), json!(&value));
+            }
+
             sqlx::query!(
-                "UPDATE servers SET website = $1 WHERE guild_id = $2",
-                value,
+                "UPDATE servers SET extra_links = $1 WHERE guild_id = $2",
+                json!(extra_links),
                 ctx.guild().unwrap().id.0 as i64
             )
             .execute(&data.pool)

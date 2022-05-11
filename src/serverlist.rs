@@ -825,9 +825,9 @@ pub async fn set(
     let member_count = guild_with_mc.approximate_member_count.unwrap_or(guild.member_count);
 
     sqlx::query!(
-        "INSERT INTO servers (guild_id, owner_id, name_cached, avatar_cached, api_token, guild_count, nsfw) VALUES ($1, $2, $3, $4, $5, $6, $7) 
+        "INSERT INTO servers (guild_id, owner_id, name_cached, avatar_cached, api_token, guild_count) VALUES ($1, $2, $3, $4, $5, $6) 
         ON CONFLICT (guild_id) DO UPDATE SET owner_id = excluded.owner_id, name_cached = excluded.name_cached, 
-        avatar_cached = excluded.avatar_cached, guild_count = excluded.guild_count, nsfw = excluded.nsfw WHERE 
+        avatar_cached = excluded.avatar_cached, guild_count = excluded.guild_count WHERE 
         servers.guild_id = $1",
         guild.id.0 as i64,
         ctx.author().id.0 as i64,
@@ -835,10 +835,28 @@ pub async fn set(
         guild.icon_url().unwrap_or_else(|| "https://api.fateslist.xyz/static/botlisticon.webp".to_string()),
         create_token(128),
         member_count as i64,
-        guild.nsfw_level == serenity::NsfwLevel::Explicit || guild.nsfw_level == serenity::NsfwLevel::AgeRestricted
     )
     .execute(&data.pool)
     .await?;
+
+    sqlx::query!(
+        "UPDATE servers SET flags = array_remove(flags, $1) WHERE guild_id = $2",
+        Flags::NSFW as i32,
+        guild.id.0 as i64,
+    )
+    .execute(&data.pool)
+    .await?;
+
+    if guild.nsfw_level == serenity::NsfwLevel::Explicit || guild.nsfw_level == serenity::NsfwLevel::AgeRestricted {
+        sqlx::query!(
+            "UPDATE servers SET flags = array_append(flags, $1) WHERE guild_id = $2",
+            Flags::NSFW as i32,
+            guild.id.0 as i64,
+        )
+        .execute(&data.pool)
+        .await?;
+    }
+
 
     let state = sqlx::query!(
         "SELECT state, flags, extra_links FROM servers WHERE guild_id = $1",

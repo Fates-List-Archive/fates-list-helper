@@ -127,7 +127,7 @@ dependencies = [
 [[package]]
 name = "bristlefrost"
 version = "0.1.0"
-source = "git+https://github.com/Fates-List/bristlefrost#d57f99065d20c08696658aeb8067b08af67af354"
+source = "git+https://github.com/Fates-List/bristlefrost#ae2c8f38f3fdddeed10a706523fe17b7e127369d"
 dependencies = [
  "num_enum",
  "serde",

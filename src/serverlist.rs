@@ -1108,12 +1108,22 @@ Note that ``/set`` and other commands will still work to allow you to make any r
             };
 
             sqlx::query!(
-                "UPDATE servers SET keep_banner_decor = $1 WHERE guild_id = $2",
-                keep_banner_decor,
-                ctx.guild().unwrap().id.0 as i64
+                "UPDATE servers SET flags = array_remove(flags, $1) WHERE guild_id = $2",
+                Flags::KeepBannerDecor as i32,
+                guild.id.0 as i64,
             )
             .execute(&data.pool)
             .await?;
+        
+            if keep_banner_decor {
+                sqlx::query!(
+                    "UPDATE servers SET flags = array_append(flags, $1) WHERE guild_id = $2",
+                    Flags::KeepBannerDecor as i32,
+                    guild.id.0 as i64,
+                )
+                .execute(&data.pool)
+                .await?;
+            }
         },
         SetField::Vanity => {
             let check = sqlx::query!(

@@ -4,7 +4,7 @@ use rand::distributions::Alphanumeric;
 use std::borrow::Cow;
 use crate::helpers;
 use serde_json::json;
-use bristlefrost::models::{LongDescriptionType, State, WebhookType};
+use bristlefrost::models::{LongDescriptionType, Flags, State, WebhookType};
 
 type Error = crate::Error;
 type Context<'a> = crate::Context<'a>;
@@ -841,7 +841,7 @@ pub async fn set(
     .await?;
 
     let state = sqlx::query!(
-        "SELECT state, extra_links FROM servers WHERE guild_id = $1",
+        "SELECT state, flags, extra_links FROM servers WHERE guild_id = $1",
         guild.id.0 as i64
     )
     .fetch_one(&data.pool)
@@ -1285,13 +1285,25 @@ Note that ``/set`` and other commands will still work to allow you to make any r
                 }
             };
 
+            // Remove from flags first to remove duplicates
+
             sqlx::query!(
-                "UPDATE servers SET whitelist_only = $1 WHERE guild_id = $2",
-                whitelist_only,
+                "UPDATE servers SET flags = array_remove(flags, $1) WHERE guild_id = $2",
+                Flags::WhitelistOnly as i32,
                 ctx.guild().unwrap().id.0 as i64
             )
             .execute(&data.pool)
             .await?;
+
+            if whitelist_only {
+                sqlx::query!(
+                    "UPDATE servers SET flags = array_append(flags, $1) WHERE guild_id = $2",
+                    Flags::WhitelistOnly as i32,
+                    ctx.guild().unwrap().id.0 as i64
+                )
+                .execute(&data.pool)
+                .await?;
+            }
         },
         SetField::WhitelistForm => {
             if !value.starts_with("https://") && value != *"" {

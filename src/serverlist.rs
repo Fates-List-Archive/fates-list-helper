@@ -1263,13 +1263,25 @@ Note that ``/set`` and other commands will still work to allow you to make any r
                 }
             };
 
+            // Remove from flags first to remove duplicates
+
             sqlx::query!(
-                "UPDATE servers SET login_required = $1 WHERE guild_id = $2",
-                requires_login,
+                "UPDATE servers SET flags = array_remove(flags, $1) WHERE guild_id = $2",
+                Flags::LoginRequired as i32,
                 ctx.guild().unwrap().id.0 as i64
             )
             .execute(&data.pool)
             .await?;
+
+            if requires_login {
+                sqlx::query!(
+                    "UPDATE servers SET flags = array_append(flags, $1) WHERE guild_id = $2",
+                    Flags::LoginRequired as i32,
+                    ctx.guild().unwrap().id.0 as i64
+                )
+                .execute(&data.pool)
+                .await?;
+            }
         },
         SetField::VoteRoles => {
             let mut vote_roles = Vec::new();

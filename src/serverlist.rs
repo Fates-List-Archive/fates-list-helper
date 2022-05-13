@@ -1,10 +1,10 @@
-use poise::serenity_prelude as serenity;
-use rand::{thread_rng, Rng};
-use rand::distributions::Alphanumeric;
-use std::borrow::Cow;
 use crate::helpers;
+use bristlefrost::models::{Flags, LongDescriptionType, State, WebhookType};
+use poise::serenity_prelude as serenity;
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
 use serde_json::json;
-use bristlefrost::models::{LongDescriptionType, Flags, State, WebhookType};
+use std::borrow::Cow;
 
 type Error = crate::Error;
 type Context<'a> = crate::Context<'a>;
@@ -14,82 +14,95 @@ type Data = crate::Data;
 #[poise::command(
     prefix_command,
     slash_command,
-    guild_cooldown = 10, required_permissions = "ADMINISTRATOR"
+    guild_cooldown = 10,
+    required_permissions = "ADMINISTRATOR"
 )]
-pub async fn delserver(
-    ctx: Context<'_>,
-)  -> Result<(), Error> {
+pub async fn delserver(ctx: Context<'_>) -> Result<(), Error> {
     let guild = ctx.guild();
 
     let data = ctx.data();
 
     if guild.is_none() {
-        ctx.say("You must be in a server to use this command").await?;
+        ctx.say("You must be in a server to use this command")
+            .await?;
         return Ok(());
     }
 
     let guild = guild.unwrap();
 
-    sqlx::query!(
-        "DELETE FROM servers WHERE guild_id = $1",
-        guild.id.0 as i64
-    )
-    .execute(&data.pool)
-    .await?;
+    sqlx::query!("DELETE FROM servers WHERE guild_id = $1", guild.id.0 as i64)
+        .execute(&data.pool)
+        .await?;
 
-    sqlx::query!(
-        "DELETE FROM vanity WHERE redirect = $1",
-        guild.id.0 as i64
-    )
-    .execute(&data.pool)
-    .await?;
+    sqlx::query!("DELETE FROM vanity WHERE redirect = $1", guild.id.0 as i64)
+        .execute(&data.pool)
+        .await?;
 
-    ctx.say("Server deleted. Feel free to kick the bot").await?; 
+    ctx.say("Server deleted. Feel free to kick the bot").await?;
 
     Ok(())
 }
 
-
 /// Tag base command
-#[poise::command(prefix_command, slash_command, guild_cooldown = 10, required_permissions = "SEND_MESSAGES")]
-pub async fn tags(
-    ctx: Context<'_>,
-) -> Result<(), Error> {
+#[poise::command(
+    prefix_command,
+    slash_command,
+    guild_cooldown = 10,
+    required_permissions = "SEND_MESSAGES"
+)]
+pub async fn tags(ctx: Context<'_>) -> Result<(), Error> {
     ctx.say("Available options are ``tags add``, ``tags dump``, ``tags remove``, ``tags edit``, ``tags nuke`` and ``tags transfer``. *Please read our server listing rules available at https://lynx.fateslist.xyz/privacy#server-listing to ensure everyone has a good experience*").await?;
     Ok(())
 }
 
 /// Adds a tag
-#[poise::command(prefix_command, slash_command, guild_cooldown = 10, required_permissions = "MANAGE_GUILD", rename = "add")]
+#[poise::command(
+    prefix_command,
+    slash_command,
+    guild_cooldown = 10,
+    required_permissions = "MANAGE_GUILD",
+    rename = "add"
+)]
 pub async fn tag_add(
     ctx: Context<'_>,
-    #[description = "Tag name"]
-    tag_name: String
+    #[description = "Tag name"] tag_name: String,
 ) -> Result<(), Error> {
     let data = ctx.data();
 
     let guild = ctx.guild();
 
     if guild.is_none() {
-        ctx.say("You must be in a server to use this command").await?;
+        ctx.say("You must be in a server to use this command")
+            .await?;
         return Ok(());
     }
 
     let guild = guild.unwrap();
 
-    let sanitized = tag_name.chars().filter(|&c| c.is_alphabetic() || c == ' ').collect::<String>();
+    let sanitized = tag_name
+        .chars()
+        .filter(|&c| c.is_alphabetic() || c == ' ')
+        .collect::<String>();
 
     if sanitized != tag_name {
-        ctx.say("Tag name contains invalid characters. Only a-z and spaces are allowed.").await?;
+        ctx.say("Tag name contains invalid characters. Only a-z and spaces are allowed.")
+            .await?;
         return Ok(());
     }
 
-    let banned = vec!["best-", "good-", "fuck", "nigger", "fates-list", "fateslist"];
+    let banned = vec![
+        "best-",
+        "good-",
+        "fuck",
+        "nigger",
+        "fates-list",
+        "fateslist",
+    ];
 
     for kw in banned {
         if tag_name.contains(kw) {
             ctx.say(&format!("{} not allowed in tag names", kw)).await?;
-            return Ok(())
+            return Ok(());
         }
     }
 
@@ -124,10 +137,10 @@ pub async fn tag_add(
             .await?;
 
             ctx.say(format!("Tag {} added and ownership claimed as this is a brand new tag! *Please read our server listing rules available at https://lynx.fateslist.xyz/privacy#server-listing to ensure everyone has a good experience*", tag_name)).await?;
-        },
+        }
         Err(e) => {
             return Err(Box::new(e));
-        },
+        }
         Ok(row) => {
             // Check if tag already exists
             let check = sqlx::query!(
@@ -175,21 +188,25 @@ pub async fn tag_add(
 }
 
 /// Edits a tag
-#[poise::command(prefix_command, slash_command, guild_cooldown = 10, required_permissions = "MANAGE_GUILD", rename = "edit")]
+#[poise::command(
+    prefix_command,
+    slash_command,
+    guild_cooldown = 10,
+    required_permissions = "MANAGE_GUILD",
+    rename = "edit"
+)]
 pub async fn tag_edit(
     ctx: Context<'_>,
-    #[description = "Tag name"]
-    tag_name: String,
-    #[description = "New iconify icon (see https://iconify.design)"]
-    iconify_data: String
+    #[description = "Tag name"] tag_name: String,
+    #[description = "New iconify icon (see https://iconify.design)"] iconify_data: String,
 ) -> Result<(), Error> {
-
     let data = ctx.data();
 
     let guild = ctx.guild();
 
     if guild.is_none() {
-        ctx.say("You must be in a server to use this command").await?;
+        ctx.say("You must be in a server to use this command")
+            .await?;
         return Ok(());
     }
 
@@ -207,10 +224,10 @@ pub async fn tag_edit(
     match check {
         Err(sqlx::Error::RowNotFound) => {
             ctx.say(format!("Tag {} not found", tag_name)).await?;
-        },
+        }
         Err(e) => {
             return Err(Box::new(e));
-        },
+        }
         Ok(row) => {
             if row.owner_guild != guild.id.0 as i64 {
                 ctx.say(format!("You do not own tag {} and as such you may not modify its properties.\n\nContact Fates List Staff if you think this server is holding the tag for malicious purposes and does not allow for sane discussion over it. *Please read our server listing rules available at https://lynx.fateslist.xyz/privacy#server-listing to ensure everyone has a good experience*", tag_name)).await?;
@@ -233,13 +250,17 @@ pub async fn tag_edit(
 }
 
 /// Nukes a tag if it is only present in one or less servers
-#[poise::command(prefix_command, slash_command, guild_cooldown = 10, required_permissions = "MANAGE_GUILD", rename = "nuke")]
+#[poise::command(
+    prefix_command,
+    slash_command,
+    guild_cooldown = 10,
+    required_permissions = "MANAGE_GUILD",
+    rename = "nuke"
+)]
 pub async fn tag_nuke(
     ctx: Context<'_>,
-    #[description = "Tag name"]
-    tag_name: String,
+    #[description = "Tag name"] tag_name: String,
 ) -> Result<(), Error> {
-
     let data = ctx.data();
 
     let internal_tag_name = tag_name.replace(' ', "-").to_lowercase();
@@ -252,16 +273,17 @@ pub async fn tag_nuke(
     .await?;
 
     if check.len() > 1 {
-        ctx.say(format!("Tag {} is present on more than one server and cannot be nuked: {:?}.", tag_name, check)).await?;
+        ctx.say(format!(
+            "Tag {} is present on more than one server and cannot be nuked: {:?}.",
+            tag_name, check
+        ))
+        .await?;
         return Ok(());
     }
 
-    sqlx::query!(
-        "DELETE FROM server_tags WHERE id = $1",
-        internal_tag_name
-    )
-    .execute(&data.pool)
-    .await?;
+    sqlx::query!("DELETE FROM server_tags WHERE id = $1", internal_tag_name)
+        .execute(&data.pool)
+        .await?;
 
     sqlx::query!(
         "UPDATE servers SET tags = array_remove(tags, $1)",
@@ -276,21 +298,26 @@ pub async fn tag_nuke(
 }
 
 /// Transfers a tag
-#[poise::command(prefix_command, slash_command, guild_cooldown = 10, required_permissions = "MANAGE_GUILD", rename = "transfer")]
+#[poise::command(
+    prefix_command,
+    slash_command,
+    guild_cooldown = 10,
+    required_permissions = "MANAGE_GUILD",
+    rename = "transfer"
+)]
 pub async fn tag_transfer(
     ctx: Context<'_>,
-    #[description = "Tag name"]
-    tag_name: String,
+    #[description = "Tag name"] tag_name: String,
     #[description = "New server. Set to 'unclaim' to unclaim the tag. A unclaimed tag may be claimed by adding it."]
-    new_server: String
+    new_server: String,
 ) -> Result<(), Error> {
-
     let data = ctx.data();
 
     let guild = ctx.guild();
 
     if guild.is_none() {
-        ctx.say("You must be in a server to use this command").await?;
+        ctx.say("You must be in a server to use this command")
+            .await?;
         return Ok(());
     }
 
@@ -308,10 +335,10 @@ pub async fn tag_transfer(
     match check {
         Err(sqlx::Error::RowNotFound) => {
             ctx.say(format!("Tag {} not found", tag_name)).await?;
-        },
+        }
         Err(e) => {
             return Err(Box::new(e));
-        },
+        }
         Ok(row) => {
             if row.owner_guild != guild.id.0 as i64 {
                 ctx.say(format!("You do not own tag {} and as such you may not modify its properties.\n\nContact Fates List Staff if you think this server is holding the tag for malicious purposes and does not allow for sane discussion over it.", tag_name)).await?;
@@ -330,13 +357,14 @@ pub async fn tag_transfer(
 
                 ctx.say(format!("Tag {} unclaimed!", tag_name)).await?;
 
-                return Ok(())
+                return Ok(());
             }
 
             let new_server_id = match new_server.parse::<i64>() {
                 Ok(id) => id,
                 Err(_) => {
-                    ctx.say(format!("Server {} is not a i64", new_server)).await?;
+                    ctx.say(format!("Server {} is not a i64", new_server))
+                        .await?;
                     return Ok(());
                 }
             };
@@ -362,7 +390,11 @@ pub async fn tag_transfer(
                     return Ok(());
                 }
             }
-            ctx.say(format!("Tag {} could not be transferred as recipient server does not also have tag!", tag_name)).await?;
+            ctx.say(format!(
+                "Tag {} could not be transferred as recipient server does not also have tag!",
+                tag_name
+            ))
+            .await?;
         }
     }
 
@@ -370,11 +402,16 @@ pub async fn tag_transfer(
 }
 
 /// Dumps a tag
-#[poise::command(prefix_command, slash_command, guild_cooldown = 10, required_permissions = "MANAGE_GUILD", rename = "dump")]
+#[poise::command(
+    prefix_command,
+    slash_command,
+    guild_cooldown = 10,
+    required_permissions = "MANAGE_GUILD",
+    rename = "dump"
+)]
 pub async fn tag_dump(
     ctx: Context<'_>,
-    #[description = "Tag name or internal name"]
-    tag_name: String
+    #[description = "Tag name or internal name"] tag_name: String,
 ) -> Result<(), Error> {
     let data = ctx.data();
 
@@ -393,25 +430,35 @@ pub async fn tag_dump(
 
     ctx.send(|m| {
         m.content("Tag dump");
-        m.attachment(serenity::AttachmentType::Bytes { data: Cow::from(data.as_bytes().to_vec()), filename: "tag-dump.json".to_string() } )
-    }).await?;
+        m.attachment(serenity::AttachmentType::Bytes {
+            data: Cow::from(data.as_bytes().to_vec()),
+            filename: "tag-dump.json".to_string(),
+        })
+    })
+    .await?;
 
     Ok(())
 }
 
 /// Removes a tag from a server.
-#[poise::command(prefix_command, slash_command, guild_cooldown = 10, required_permissions = "MANAGE_GUILD", rename = "remove")]
+#[poise::command(
+    prefix_command,
+    slash_command,
+    guild_cooldown = 10,
+    required_permissions = "MANAGE_GUILD",
+    rename = "remove"
+)]
 pub async fn tag_remove(
     ctx: Context<'_>,
-    #[description = "Tag name"]
-    tag_name: String
+    #[description = "Tag name"] tag_name: String,
 ) -> Result<(), Error> {
     let data = ctx.data();
 
     let guild = ctx.guild();
 
     if guild.is_none() {
-        ctx.say("You must be in a server to use this command").await?;
+        ctx.say("You must be in a server to use this command")
+            .await?;
         return Ok(());
     }
 
@@ -429,10 +476,10 @@ pub async fn tag_remove(
     match check {
         Err(sqlx::Error::RowNotFound) => {
             ctx.say(format!("Tag {} not found", tag_name)).await?;
-        },
+        }
         Err(e) => {
             return Err(Box::new(e));
-        },
+        }
         Ok(row) => {
             if row.owner_guild == guild.id.0 as i64 {
                 ctx.say(format!("You currently own tag {} and as such cannot remove it. Consider transferring it to another server using ``tag transfer``. See ``help`` for more information.", tag_name)).await?;
@@ -448,23 +495,30 @@ pub async fn tag_remove(
             .execute(&data.pool)
             .await?;
 
-            ctx.say(format!("Tag {} removed if present. You can use ``dumpserver`` to verify this", tag_name)).await?;
+            ctx.say(format!(
+                "Tag {} removed if present. You can use ``dumpserver`` to verify this",
+                tag_name
+            ))
+            .await?;
         }
     }
 
     Ok(())
 }
 
-
 /// View audit logs.
-#[poise::command(prefix_command, slash_command, guild_cooldown = 10, required_permissions = "VIEW_AUDIT_LOG")]
-pub async fn auditlogs(
-    ctx: Context<'_>,
-) -> Result<(), Error> {
+#[poise::command(
+    prefix_command,
+    slash_command,
+    guild_cooldown = 10,
+    required_permissions = "VIEW_AUDIT_LOG"
+)]
+pub async fn auditlogs(ctx: Context<'_>) -> Result<(), Error> {
     let guild = ctx.guild();
 
     if guild.is_none() {
-        ctx.say("You must be in a server to use this command").await?;
+        ctx.say("You must be in a server to use this command")
+            .await?;
         return Ok(());
     }
 
@@ -495,14 +549,18 @@ pub async fn auditlogs(
 }
 
 /// Dumps the server data to a file for viewing.
-#[poise::command(prefix_command, slash_command, guild_cooldown = 10, required_permissions = "ADMINISTRATOR")]
-pub async fn dumpserver(
-    ctx: Context<'_>,
-) -> Result<(), Error> {
+#[poise::command(
+    prefix_command,
+    slash_command,
+    guild_cooldown = 10,
+    required_permissions = "ADMINISTRATOR"
+)]
+pub async fn dumpserver(ctx: Context<'_>) -> Result<(), Error> {
     let guild = ctx.guild();
 
     if guild.is_none() {
-        ctx.say("You must be in a server to use this command").await?;
+        ctx.say("You must be in a server to use this command")
+            .await?;
         return Ok(());
     }
 
@@ -526,9 +584,7 @@ pub async fn dumpserver(
     .await;
 
     let vanity_data = match vanity {
-        Ok(vanity) => {
-            vanity.json.unwrap_or_else(|| serde_json::json!({}))
-        }
+        Ok(vanity) => vanity.json.unwrap_or_else(|| serde_json::json!({})),
         Err(sqlx::Error::RowNotFound) => {
             serde_json::json!({})
         }
@@ -544,57 +600,87 @@ pub async fn dumpserver(
 
         // Remove sensitive fields
         v.remove("webhook_secret");
-        v.insert("webhook_secret".to_string(), serde_json::json!("Redacted from server dump. Reset using /set"));
+        v.insert(
+            "webhook_secret".to_string(),
+            serde_json::json!("Redacted from server dump. Reset using /set"),
+        );
 
         let data = serde_json::to_string_pretty(&v)?;
 
-        member.user.create_dm_channel(&ctx.discord()).await?.send_message(&ctx.discord(),|m| {
-            m.content("**Server Dump**");
-            m.files(vec![
-                serenity::AttachmentType::Bytes { data: Cow::from(data.as_bytes().to_vec()), filename: "server.json".to_string() },
-            ] )
-        }).await?;
+        member
+            .user
+            .create_dm_channel(&ctx.discord())
+            .await?
+            .send_message(&ctx.discord(), |m| {
+                m.content("**Server Dump**");
+                m.files(vec![serenity::AttachmentType::Bytes {
+                    data: Cow::from(data.as_bytes().to_vec()),
+                    filename: "server.json".to_string(),
+                }])
+            })
+            .await?;
 
         ctx.say("DMed you server dump").await?;
 
         return Ok(());
-    } 
+    }
 
-    ctx.say("Failed to dump server. Contact Fates List Support.").await?;
+    ctx.say("Failed to dump server. Contact Fates List Support.")
+        .await?;
 
     Ok(())
 }
 
 #[derive(poise::ChoiceParameter, Debug)]
 pub enum SetField {
-    #[name = "Description"] Description,
-    #[name = "Long Description"] LongDescription,
-    #[name = "Long Description Type"] LongDescriptionType,
-    #[name = "Invite Code"] InviteCode,
-    #[name = "Invite Channel ID"] InviteChannelID, 
-    #[name = "Website"] Website, 
-    #[name = "CSS"] Css, 
-    #[name = "Banner (server card)"] BannerCard,
-    #[name = "Banner (server page)"] BannerPage, 
-    #[name = "Keep Banner Decorations"] KeepBannerDecor, 
-    #[name = "Vanity"] Vanity,
-    #[name = "State"] State,
-    #[name = "Webhook URL"] WebhookURL, 
-    #[name = "Webhook Type"] WebhookType, 
-    #[name = "Webhook Secret"] WebhookSecret, 
-    #[name = "Webhook HMAC Only"] WebhookHMACOnly,
-    #[name = "Requires Login To Join"] RequiresLogin, 
-    #[name = "Vote Roles"] VoteRoles, 
-    #[name = "Whitelist Only"] WhitelistOnly, 
-    #[name = "Whitelist Form"] WhitelistForm, // Done till here
+    #[name = "Description"]
+    Description,
+    #[name = "Long Description"]
+    LongDescription,
+    #[name = "Long Description Type"]
+    LongDescriptionType,
+    #[name = "Invite Code"]
+    InviteCode,
+    #[name = "Invite Channel ID"]
+    InviteChannelID,
+    #[name = "Website"]
+    Website,
+    #[name = "CSS"]
+    Css,
+    #[name = "Banner (server card)"]
+    BannerCard,
+    #[name = "Banner (server page)"]
+    BannerPage,
+    #[name = "Keep Banner Decorations"]
+    KeepBannerDecor,
+    #[name = "Vanity"]
+    Vanity,
+    #[name = "State"]
+    State,
+    #[name = "Webhook URL"]
+    WebhookURL,
+    #[name = "Webhook Type"]
+    WebhookType,
+    #[name = "Webhook Secret"]
+    WebhookSecret,
+    #[name = "Webhook HMAC Only"]
+    WebhookHMACOnly,
+    #[name = "Requires Login To Join"]
+    RequiresLogin,
+    #[name = "Vote Roles"]
+    VoteRoles,
+    #[name = "Whitelist Only"]
+    WhitelistOnly,
+    #[name = "Whitelist Form"]
+    WhitelistForm, // Done till here
 }
 
 fn create_token(length: usize) -> String {
     thread_rng()
-    .sample_iter(&Alphanumeric)
-    .take(length)
-    .map(char::from)
-    .collect()
+        .sample_iter(&Alphanumeric)
+        .take(length)
+        .map(char::from)
+        .collect()
 }
 
 pub async fn deny_server(data: &Data, guild_id: i64) -> Result<(), Error> {
@@ -617,36 +703,40 @@ pub async fn ban_server(data: &Data, guild_id: i64) -> Result<(), Error> {
 
 #[derive(poise::ChoiceParameter, PartialEq, Debug)]
 pub enum Allowlist {
-    #[name = "User Whitelist"] 
+    #[name = "User Whitelist"]
     Whitelist,
-    #[name = "User Blacklist"] 
+    #[name = "User Blacklist"]
     Blacklist,
 }
 
 #[derive(poise::ChoiceParameter, PartialEq, Debug)]
 pub enum AllowlistAction {
-    #[name = "Add"] 
+    #[name = "Add"]
     Add,
-    #[name = "Remove"] 
+    #[name = "Remove"]
     Remove,
-    #[name = "Clear"] 
+    #[name = "Clear"]
     Clear,
 }
 
-
 /// Modify the server allow list to control who can access a server
-#[poise::command(track_edits, prefix_command, slash_command, guild_cooldown = 5, guild_only, required_permissions = "ADMINISTRATOR")]
+#[poise::command(
+    track_edits,
+    prefix_command,
+    slash_command,
+    guild_cooldown = 5,
+    guild_only,
+    required_permissions = "ADMINISTRATOR"
+)]
 pub async fn allowlist(
     ctx: Context<'_>,
-    #[description = "List to change"]
-    field: Allowlist,
-    #[description = "What to change"]
-    change: AllowlistAction,
-    #[description = "Member to add/remove"]
-    user: Option<String>
+    #[description = "List to change"] field: Allowlist,
+    #[description = "What to change"] change: AllowlistAction,
+    #[description = "Member to add/remove"] user: Option<String>,
 ) -> Result<(), Error> {
     if user.is_none() && change != AllowlistAction::Clear {
-        ctx.say("No user specified but you are asking to add/remove a user from allowlist").await?;
+        ctx.say("No user specified but you are asking to add/remove a user from allowlist")
+            .await?;
         return Ok(());
     }
 
@@ -654,84 +744,80 @@ pub async fn allowlist(
     let data = ctx.data();
 
     match field {
-        Allowlist::Whitelist => {
-            match change {
-                AllowlistAction::Add => {
-                    let user: i64 = user.unwrap().parse()?;
-                    sqlx::query!(
+        Allowlist::Whitelist => match change {
+            AllowlistAction::Add => {
+                let user: i64 = user.unwrap().parse()?;
+                sqlx::query!(
                         "UPDATE servers SET user_whitelist = array_remove(user_whitelist, $1) WHERE guild_id = $2",
                         user,
                         guild.id.0 as i64,
                     )
                     .execute(&data.pool)
                     .await?;
-                    sqlx::query!(
+                sqlx::query!(
                         "UPDATE servers SET user_whitelist = array_append(user_whitelist, $1) WHERE guild_id = $2",
                         user,
                         guild.id.0 as i64,
                     )
                     .execute(&data.pool)
                     .await?;
-                },
-                AllowlistAction::Remove => {
-                    let user: i64 = user.unwrap().parse()?;
-                    sqlx::query!(
+            }
+            AllowlistAction::Remove => {
+                let user: i64 = user.unwrap().parse()?;
+                sqlx::query!(
                         "UPDATE servers SET user_whitelist = array_remove(user_whitelist, $1) WHERE guild_id = $2",
                         user,
                         guild.id.0 as i64,
                     )
                     .execute(&data.pool)
                     .await?;
-                },
-                AllowlistAction::Clear => {
-                    sqlx::query!(
-                        "UPDATE servers SET user_whitelist = '{}' WHERE guild_id = $1",
-                        guild.id.0 as i64,
-                    )
-                    .execute(&data.pool)
-                    .await?;
-                }
+            }
+            AllowlistAction::Clear => {
+                sqlx::query!(
+                    "UPDATE servers SET user_whitelist = '{}' WHERE guild_id = $1",
+                    guild.id.0 as i64,
+                )
+                .execute(&data.pool)
+                .await?;
             }
         },
-        Allowlist::Blacklist => {
-            match change {
-                AllowlistAction::Add => {
-                    let user: i64 = user.unwrap().parse()?;
-                    sqlx::query!(
+        Allowlist::Blacklist => match change {
+            AllowlistAction::Add => {
+                let user: i64 = user.unwrap().parse()?;
+                sqlx::query!(
                         "UPDATE servers SET user_blacklist = array_remove(user_blacklist, $1) WHERE guild_id = $2",
                         user,
                         guild.id.0 as i64,
                     )
                     .execute(&data.pool)
                     .await?;
-                    sqlx::query!(
+                sqlx::query!(
                         "UPDATE servers SET user_blacklist = array_append(user_blacklist, $1) WHERE guild_id = $2",
                         user,
                         guild.id.0 as i64,
                     )
                     .execute(&data.pool)
                     .await?;
-                },
-                AllowlistAction::Remove => {
-                    let user: i64 = user.unwrap().parse()?;
-                    sqlx::query!(
+            }
+            AllowlistAction::Remove => {
+                let user: i64 = user.unwrap().parse()?;
+                sqlx::query!(
                         "UPDATE servers SET user_blacklist = array_remove(user_blacklist, $1) WHERE guild_id = $2",
                         user,
                         guild.id.0 as i64,
                     )
                     .execute(&data.pool)
                     .await?;
-                },
-                AllowlistAction::Clear => {
-                    sqlx::query!(
-                        "UPDATE servers SET user_blacklist = '{}' WHERE guild_id = $1",
-                        guild.id.0 as i64,
-                    )
-                    .execute(&data.pool)
-                    .await?;
-                }
             }
-        }
+            AllowlistAction::Clear => {
+                sqlx::query!(
+                    "UPDATE servers SET user_blacklist = '{}' WHERE guild_id = $1",
+                    guild.id.0 as i64,
+                )
+                .execute(&data.pool)
+                .await?;
+            }
+        },
     }
 
     ctx.say("Allowlist updated").await?;
@@ -740,15 +826,21 @@ pub async fn allowlist(
 }
 
 /// Sets a field. This adds your server to the server list.
-#[poise::command(track_edits, prefix_command, slash_command, guild_cooldown = 5, guild_only, required_permissions = "MANAGE_GUILD")]
+#[poise::command(
+    track_edits,
+    prefix_command,
+    slash_command,
+    guild_cooldown = 5,
+    guild_only,
+    required_permissions = "MANAGE_GUILD"
+)]
 pub async fn set(
     ctx: Context<'_>,
-    #[description = "Field to set"]
-    field: SetField,
-    #[description = "(Raw) Value to set field to. 'none' to reset"]
-    mut value: Option<String>,
-    #[description = "A file containing the value to set. Overrides value"]
-    long_value: Option<serenity::model::channel::Attachment>
+    #[description = "Field to set"] field: SetField,
+    #[description = "(Raw) Value to set field to. 'none' to reset"] mut value: Option<String>,
+    #[description = "A file containing the value to set. Overrides value"] long_value: Option<
+        serenity::model::channel::Attachment,
+    >,
 ) -> Result<(), Error> {
     let data = ctx.data();
 
@@ -760,28 +852,29 @@ pub async fn set(
         }
 
         let download = long_value.download().await?;
-        
+
         value = Some(match std::str::from_utf8(&download) {
             Ok(v) => v.to_string(),
             Err(e) => {
-                ctx.say(format!("File is not a valid string: {:?}!", e)).await?;
+                ctx.say(format!("File is not a valid string: {:?}!", e))
+                    .await?;
                 return Ok(());
-            },
+            }
         });
     }
 
     if value.is_none() {
-        ctx.say("No value or long_value found. Use 'none' if you wish to unset a field").await?;
+        ctx.say("No value or long_value found. Use 'none' if you wish to unset a field")
+            .await?;
         return Ok(());
     }
 
     let value = value.unwrap();
-    
 
     let guild = ctx.guild().unwrap();
 
     // Vaildate the guild
-    
+
     if guild.explicit_content_filter != serenity::model::guild::ExplicitContentFilter::All {
         ctx.say("You must have a explicit content filter set to scan messages from all users in your servers settings! See https://lynx.fateslist.xyz/privacy#server-listing").await?;
         return deny_server(data, guild.id.0 as i64).await;
@@ -793,7 +886,8 @@ pub async fn set(
     let member = ctx.author_member().await;
 
     if member.is_none() {
-        ctx.say("You must be in a server to use this command").await?;
+        ctx.say("You must be in a server to use this command")
+            .await?;
         return Ok(());
     }
 
@@ -808,9 +902,14 @@ pub async fn set(
     .await;
 
     if check.is_err() {
-        sqlx::query!("INSERT INTO users (id, user_id, username, api_token) VALUES ($1, $1, $2, $3)", member.user.id.0 as i64, member.user.name, create_token(128))
-            .execute(&data.pool)
-            .await?;
+        sqlx::query!(
+            "INSERT INTO users (id, user_id, username, api_token) VALUES ($1, $1, $2, $3)",
+            member.user.id.0 as i64,
+            member.user.name,
+            create_token(128)
+        )
+        .execute(&data.pool)
+        .await?;
     }
 
     let mut value = value; // Force it to be mutable and shadow immutable value
@@ -822,7 +921,9 @@ pub async fn set(
     // Update server details
     let guild_with_mc = ctx.discord().http.get_guild_with_counts(guild.id.0).await?;
 
-    let member_count = guild_with_mc.approximate_member_count.unwrap_or(guild.member_count);
+    let member_count = guild_with_mc
+        .approximate_member_count
+        .unwrap_or(guild.member_count);
 
     sqlx::query!(
         "INSERT INTO servers (guild_id, owner_id, name_cached, avatar_cached, api_token, guild_count) VALUES ($1, $2, $3, $4, $5, $6) 
@@ -847,7 +948,9 @@ pub async fn set(
     .execute(&data.pool)
     .await?;
 
-    if guild.nsfw_level == serenity::NsfwLevel::Explicit || guild.nsfw_level == serenity::NsfwLevel::AgeRestricted {
+    if guild.nsfw_level == serenity::NsfwLevel::Explicit
+        || guild.nsfw_level == serenity::NsfwLevel::AgeRestricted
+    {
         sqlx::query!(
             "UPDATE servers SET flags = array_append(flags, $1) WHERE guild_id = $2",
             Flags::NSFW as i32,
@@ -857,7 +960,6 @@ pub async fn set(
         .await?;
     }
 
-
     let state = sqlx::query!(
         "SELECT state, flags, extra_links FROM servers WHERE guild_id = $1",
         guild.id.0 as i64
@@ -866,12 +968,15 @@ pub async fn set(
     .await?;
 
     if state.state == (State::Banned as i32) {
-        ctx.say("
+        ctx.say(
+            "
 **Your server has been banned due to breaking our rules. 
 
 Please contact Fates List Staff if you wish to appeal. 
         
-Note that ``/set`` and other commands will still work to allow you to make any required changes**").await?;
+Note that ``/set`` and other commands will still work to allow you to make any required changes**",
+        )
+        .await?;
     } else if state.state == (State::Denied as i32) {
         enable_server(data, guild.id.0 as i64).await?;
     }
@@ -882,7 +987,8 @@ Note that ``/set`` and other commands will still work to allow you to make any r
     match field {
         SetField::Description => {
             if value.len() > 200 {
-                ctx.say("Description must be less than 200 characters").await?;
+                ctx.say("Description must be less than 200 characters")
+                    .await?;
                 return Ok(());
             }
 
@@ -893,7 +999,7 @@ Note that ``/set`` and other commands will still work to allow you to make any r
             )
             .execute(&data.pool)
             .await?;
-        },
+        }
         SetField::LongDescription => {
             if value.len() < 200 {
                 ctx.say("Long description must be at least 200 characters.\n\nThis is required in order to create a optimal user experience for your users!\n\n!").await?;
@@ -907,13 +1013,16 @@ Note that ``/set`` and other commands will still work to allow you to make any r
             )
             .execute(&data.pool)
             .await?;
-        },
+        }
         SetField::LongDescriptionType => {
             let long_desc_type = match value.as_str() {
                 "html" | "0" => LongDescriptionType::Html,
                 "markdown" | "1" => LongDescriptionType::MarkdownServerSide,
                 _ => {
-                    ctx.say("Long description type must be either `html` (`0`) or `markdown` (`1`)").await?;
+                    ctx.say(
+                        "Long description type must be either `html` (`0`) or `markdown` (`1`)",
+                    )
+                    .await?;
                     return Ok(());
                 }
             };
@@ -925,7 +1034,7 @@ Note that ``/set`` and other commands will still work to allow you to make any r
             )
             .execute(&data.pool)
             .await?;
-        },
+        }
         SetField::InviteCode => {
             if value == *"" {
                 let none: Option<String> = None;
@@ -935,7 +1044,7 @@ Note that ``/set`` and other commands will still work to allow you to make any r
                     guild.id.0 as i64
                 )
                 .execute(&data.pool)
-                .await?;    
+                .await?;
             } else {
                 // Check for MANAGE_GUILD
                 let bot = ctx.discord().cache.current_user();
@@ -952,7 +1061,9 @@ Note that ``/set`` and other commands will still work to allow you to make any r
                 // Validate invite code
                 let guild_invites = guild.invites(&ctx.discord()).await?;
 
-                value = value.replace("https://discord.gg/", "").replace("https://discord.com/invite/", "");
+                value = value
+                    .replace("https://discord.gg/", "")
+                    .replace("https://discord.com/invite/", "");
 
                 let mut got_invite: Option<serenity::RichInvite> = None;
                 for invite in guild_invites {
@@ -963,7 +1074,8 @@ Note that ``/set`` and other commands will still work to allow you to make any r
                 }
 
                 if got_invite.is_none() {
-                    ctx.say("Invite code could not be found on this guild").await?;
+                    ctx.say("Invite code could not be found on this guild")
+                        .await?;
                     return Ok(());
                 }
 
@@ -998,7 +1110,7 @@ Note that ``/set`` and other commands will still work to allow you to make any r
                 .execute(&data.pool)
                 .await?;
             }
-        },
+        }
         SetField::InviteChannelID => {
             // Check for CREATE_INVITES
             let value: String = value.chars().filter(|c| c.is_digit(10)).collect();
@@ -1010,7 +1122,7 @@ Note that ``/set`` and other commands will still work to allow you to make any r
             let mut got_channel: Option<serenity::GuildChannel> = None;
 
             for channel in guild.channels(&ctx.discord()).await? {
-                if channel.0.0 == value_i64 as u64 {
+                if channel.0 .0 == value_i64 as u64 {
                     got_channel = Some(channel.1);
                 }
             }
@@ -1022,9 +1134,12 @@ Note that ``/set`` and other commands will still work to allow you to make any r
 
             let got_channel = got_channel.unwrap();
 
-            if !got_channel.permissions_for_user(&ctx.discord(), bot.id)?.create_instant_invite() {
+            if !got_channel
+                .permissions_for_user(&ctx.discord(), bot.id)?
+                .create_instant_invite()
+            {
                 ctx.say("The bot must have the `Create Instant Invite` permission to set invite channel.").await?;
-                return Ok(())
+                return Ok(());
             }
 
             sqlx::query!(
@@ -1033,8 +1148,8 @@ Note that ``/set`` and other commands will still work to allow you to make any r
                 guild.id.0 as i64
             )
             .execute(&data.pool)
-            .await?;            
-        },
+            .await?;
+        }
         SetField::Website => {
             if !value.starts_with("https://") && value != *"" {
                 ctx.say("Website must start with https://").await?;
@@ -1047,11 +1162,10 @@ Note that ``/set`` and other commands will still work to allow you to make any r
 
             if extra_links.contains_key("Website") {
                 extra_links.remove("Website");
-            } 
-            else if extra_links.contains_key("website") {
+            } else if extra_links.contains_key("website") {
                 extra_links.remove("website");
             }
-            
+
             if value != *"" {
                 extra_links.insert("website".to_string(), json!(&value));
             }
@@ -1063,7 +1177,7 @@ Note that ``/set`` and other commands will still work to allow you to make any r
             )
             .execute(&data.pool)
             .await?;
-        },
+        }
         SetField::Css => {
             sqlx::query!(
                 "UPDATE servers SET css = $1 WHERE guild_id = $2",
@@ -1072,7 +1186,7 @@ Note that ``/set`` and other commands will still work to allow you to make any r
             )
             .execute(&data.pool)
             .await?;
-        },
+        }
         SetField::BannerCard => {
             ctx.defer().await?;
             helpers::check_banner_img(&data.client, &value).await?;
@@ -1084,7 +1198,7 @@ Note that ``/set`` and other commands will still work to allow you to make any r
             )
             .execute(&data.pool)
             .await?;
-        },
+        }
         SetField::BannerPage => {
             ctx.defer().await?;
             helpers::check_banner_img(&data.client, &value).await?;
@@ -1096,13 +1210,14 @@ Note that ``/set`` and other commands will still work to allow you to make any r
             )
             .execute(&data.pool)
             .await?;
-        },
+        }
         SetField::KeepBannerDecor => {
             let keep_banner_decor = match value.as_str() {
                 "true" | "0" => true,
                 "false" | "1" => false,
                 _ => {
-                    ctx.say("keep_banner_decor must be either `false` (`0`) or `true` (`1`)").await?;
+                    ctx.say("keep_banner_decor must be either `false` (`0`) or `true` (`1`)")
+                        .await?;
                     return Ok(());
                 }
             };
@@ -1114,7 +1229,7 @@ Note that ``/set`` and other commands will still work to allow you to make any r
             )
             .execute(&data.pool)
             .await?;
-        
+
             if keep_banner_decor {
                 sqlx::query!(
                     "UPDATE servers SET flags = array_append(flags, $1) WHERE guild_id = $2",
@@ -1124,7 +1239,7 @@ Note that ``/set`` and other commands will still work to allow you to make any r
                 .execute(&data.pool)
                 .await?;
             }
-        },
+        }
         SetField::Vanity => {
             let check = sqlx::query!(
                 "SELECT type, redirect FROM vanity WHERE lower(vanity_url) = $1",
@@ -1136,31 +1251,33 @@ Note that ``/set`` and other commands will still work to allow you to make any r
             match check {
                 Err(sqlx::Error::RowNotFound) => {
                     // Remove old vanity
+                    sqlx::query!("DELETE FROM vanity WHERE redirect = $1", guild.id.0 as i64)
+                        .execute(&data.pool)
+                        .await?;
+
+                    // Add new vanity
                     sqlx::query!(
-                        "DELETE FROM vanity WHERE redirect = $1",
-                        guild.id.0 as i64
+                        "INSERT INTO vanity (type, vanity_url, redirect) VALUES ($1, $2, $3)",
+                        0,
+                        value,
+                        ctx.guild().unwrap().id.0 as i64
                     )
                     .execute(&data.pool)
                     .await?;
-                    
-                    // Add new vanity
-                    sqlx::query!("INSERT INTO vanity (type, vanity_url, redirect) VALUES ($1, $2, $3)", 
-                    0, 
-                    value,
-                    ctx.guild().unwrap().id.0 as i64
-                )
-                    .execute(&data.pool)
-                    .await?;
-                },
+                }
                 Err(e) => {
                     return Err(Box::new(e));
-                },
+                }
                 Ok(row) => {
-                    ctx.say(format!("Vanity URL is already in use by `{:?}` of ID `{:?}`", row.r#type, row.redirect)).await?;
+                    ctx.say(format!(
+                        "Vanity URL is already in use by `{:?}` of ID `{:?}`",
+                        row.r#type, row.redirect
+                    ))
+                    .await?;
                     return Ok(());
-                },
+                }
             }
-        },
+        }
         SetField::State => {
             let state = match value.as_str() {
                 "public" | "approved" | "0" => State::Approved,
@@ -1171,13 +1288,18 @@ Note that ``/set`` and other commands will still work to allow you to make any r
                 }
             };
 
-            let check = sqlx::query!("SELECT state FROM servers WHERE guild_id = $1", ctx.guild().unwrap().id.0 as i64)
-                .fetch_one(&data.pool)
-                .await?;
+            let check = sqlx::query!(
+                "SELECT state FROM servers WHERE guild_id = $1",
+                ctx.guild().unwrap().id.0 as i64
+            )
+            .fetch_one(&data.pool)
+            .await?;
 
-            if check.state != (State::Approved as i32) && check.state != (State::PrivateViewable as i32) {
+            if check.state != (State::Approved as i32)
+                && check.state != (State::PrivateViewable as i32)
+            {
                 ctx.say("You cannot perform this action at this time. Is your bot flagged, denied, banned, certified or pending review?") .await?;
-                return Ok(())
+                return Ok(());
             }
 
             sqlx::query!(
@@ -1187,7 +1309,7 @@ Note that ``/set`` and other commands will still work to allow you to make any r
             )
             .execute(&data.pool)
             .await?;
-        },
+        }
         SetField::WebhookURL => {
             if !value.starts_with("https://") && value != *"" {
                 ctx.say("Webhook URL must start with https://").await?;
@@ -1201,13 +1323,14 @@ Note that ``/set`` and other commands will still work to allow you to make any r
             )
             .execute(&data.pool)
             .await?;
-        },
+        }
         SetField::WebhookType => {
             let webhook_type = match value.as_str() {
                 "vote" | "0" => WebhookType::Vote,
                 "discord" | "1" => WebhookType::DiscordIntegration,
                 _ => {
-                    ctx.say("Webhook type must be either `vote` (`0`) or `discord` (`1`)").await?;
+                    ctx.say("Webhook type must be either `vote` (`0`) or `discord` (`1`)")
+                        .await?;
                     return Ok(());
                 }
             };
@@ -1219,7 +1342,7 @@ Note that ``/set`` and other commands will still work to allow you to make any r
             )
             .execute(&data.pool)
             .await?;
-        },
+        }
         SetField::WebhookSecret => {
             sqlx::query!(
                 "UPDATE servers SET webhook_secret = $1 WHERE guild_id = $2",
@@ -1234,13 +1357,14 @@ Note that ``/set`` and other commands will still work to allow you to make any r
 
             // Prevent others from seeing interaction
             ctx.defer_ephemeral().await?;
-        },
+        }
         SetField::WebhookHMACOnly => {
             let webhook_hmac_only = match value.as_str() {
                 "true" | "0" => true,
                 "false" | "1" => false,
                 _ => {
-                    ctx.say("webhook_hmac_only must be either `false` (`0`) or `true` (`1`)").await?;
+                    ctx.say("webhook_hmac_only must be either `false` (`0`) or `true` (`1`)")
+                        .await?;
                     return Ok(());
                 }
             };
@@ -1252,13 +1376,14 @@ Note that ``/set`` and other commands will still work to allow you to make any r
             )
             .execute(&data.pool)
             .await?;
-        },
+        }
         SetField::RequiresLogin => {
             let requires_login = match value.as_str() {
                 "true" | "0" => true,
                 "false" | "1" => false,
                 _ => {
-                    ctx.say("requires_login must be either `false` (`0`) or `true` (`1`)").await?;
+                    ctx.say("requires_login must be either `false` (`0`) or `true` (`1`)")
+                        .await?;
                     return Ok(());
                 }
             };
@@ -1282,7 +1407,7 @@ Note that ``/set`` and other commands will still work to allow you to make any r
                 .execute(&data.pool)
                 .await?;
             }
-        },
+        }
         SetField::VoteRoles => {
             let mut vote_roles = Vec::new();
             value = value.replace(',', "|");
@@ -1298,7 +1423,11 @@ Note that ``/set`` and other commands will still work to allow you to make any r
                 if let Some(role) = role {
                     vote_roles.push(role.id.0 as i64);
                 } else {
-                    ctx.say(format!("Ignoring role: {:?} as it could not be found", role_id)).await?;
+                    ctx.say(format!(
+                        "Ignoring role: {:?} as it could not be found",
+                        role_id
+                    ))
+                    .await?;
                 }
             }
 
@@ -1314,13 +1443,14 @@ Note that ``/set`` and other commands will still work to allow you to make any r
             )
             .execute(&data.pool)
             .await?;
-        },
+        }
         SetField::WhitelistOnly => {
             let whitelist_only = match value.as_str() {
                 "true" | "0" => true,
                 "false" | "1" => false,
                 _ => {
-                    ctx.say("whitelist_only must be either `false` (`0`) or `true` (`1`)").await?;
+                    ctx.say("whitelist_only must be either `false` (`0`) or `true` (`1`)")
+                        .await?;
                     return Ok(());
                 }
             };
@@ -1344,7 +1474,7 @@ Note that ``/set`` and other commands will still work to allow you to make any r
                 .execute(&data.pool)
                 .await?;
             }
-        },
+        }
         SetField::WhitelistForm => {
             if !value.starts_with("https://") && value != *"" {
                 ctx.say("Whitelist Form must start with https://").await?;
@@ -1358,7 +1488,7 @@ Note that ``/set`` and other commands will still work to allow you to make any r
             )
             .execute(&data.pool)
             .await?;
-        },
+        }
     }
 
     // Audit log entry
@@ -1373,7 +1503,6 @@ Note that ``/set`` and other commands will still work to allow you to make any r
     )
     .execute(&data.pool)
     .await?;
-
 
     ctx.say(format!("Set {:?} successfully. Either use /dumpserver or check out your server page!\n\nIf you wish to delete your server from server listing at any time, use `/delserver`. Fates List is not responsible for any harm caused by using Fates List Server Listing. *Please read our server listing rules available at https://lynx.fateslist.xyz/privacy#server-listing to ensure everyone has a good experience*\n\nYour servers name and icon has also been updated on the site", field)).await?;
 

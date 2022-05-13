@@ -8,11 +8,12 @@ pub async fn check_banner_img(client: &reqwest::Client, url: &str) -> Result<(),
         return Ok(());
     }
 
-    let req = client.get(url)
-    .timeout(Duration::from_secs(10))
-    .send()
-    .await
-    .map_err(BannerCheckError::BadURL)?;
+    let req = client
+        .get(url)
+        .timeout(Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(BannerCheckError::BadURL)?;
 
     let status = req.status();
 
@@ -21,7 +22,12 @@ pub async fn check_banner_img(client: &reqwest::Client, url: &str) -> Result<(),
     }
 
     let default = &HeaderValue::from_str("").unwrap();
-    let content_type = req.headers().get("Content-Type").unwrap_or(default).to_str().unwrap();
+    let content_type = req
+        .headers()
+        .get("Content-Type")
+        .unwrap_or(default)
+        .to_str()
+        .unwrap();
 
     if content_type.split('/').next().unwrap() != "image" {
         return Err(BannerCheckError::BadContentType(content_type.to_string()));

@@ -3,11 +3,11 @@
 use bigdecimal::BigDecimal;
 use bigdecimal::FromPrimitive;
 use bigdecimal::ToPrimitive;
-use bristlefrost::models::State;
+use bristlefrost::models::{State, TargetType};
 use log::{debug, error, info};
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::Mentionable;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 use std::env;
 use std::fs::File;
@@ -17,12 +17,27 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::{task, time};
-
 pub struct Data {
     pool: sqlx::PgPool,
     client: reqwest::Client,
     key_data: KeyData,
 }
+
+#[derive(Serialize)]
+struct NotificationSubData {
+    endpoint: String,
+    p256dh: String,
+    auth: String,
+    data: String,
+}
+
+#[derive(Serialize)]
+struct Notification {
+    users: Vec<String>,
+    target_type: TargetType
+}
+
+
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
@@ -894,6 +909,13 @@ async fn vote_reminder_task(
 ) {
     let mut interval = time::interval(Duration::from_millis(10000));
 
+    // Lets create a new client
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .user_agent("VRTask/0.1")
+        .build()
+        .unwrap();
+
     loop {
         interval.tick().await;
         debug!("Called VRTask: {:?}", vr_type); // TODO: Remove this
@@ -948,7 +970,9 @@ async fn vote_reminder_task(
                         );
                     }
 
-                    // The hard part, bot string creation
+                    // The hard part, bot string creation and push notifications
+
+                    let mut push_bots = Vec::new();
 
                     let mut bots_str: String = "".to_string();
 
@@ -958,6 +982,9 @@ async fn vote_reminder_task(
                     let mut tlen = row.vote_reminders.len();
 
                     for bot in &row.vote_reminders {
+                        // First add it to bot vec for push notifications
+                        push_bots.push(bot.to_string());
+
                         let mut mod_front = "";
                         if tlen_initial > 1 && tlen == 1 {
                             // We have more than one bot, but we're at the last one
@@ -981,6 +1008,14 @@ async fn vote_reminder_task(
 
                         tlen -= 1;
                     }
+
+                    // Spawn push notification
+                    task::spawn(
+                        send_push(row.user_id, pool.clone(), client.clone(), Notification {
+                            target_type: TargetType::Bot,
+                            users: push_bots,
+                        })
+                    );
 
                     // Now actually send the message
                     let res = channel
@@ -1063,7 +1098,8 @@ async fn vote_reminder_task(
                         );
                     }
 
-                    // The hard part, bot string creation
+                    // The hard part, server string creation and push notifications
+                    let mut push_servers = Vec::new();
 
                     let mut servers_str: String = "".to_string();
 
@@ -1073,6 +1109,8 @@ async fn vote_reminder_task(
                     let mut tlen = row.vote_reminders_servers.len();
 
                     for server in &row.vote_reminders_servers {
+                        push_servers.push(server.to_string());
+
                         let mut mod_front = "";
                         if tlen_initial > 1 && tlen == 1 {
                             // We have more than one bot, but we're at the last one
@@ -1112,6 +1150,14 @@ async fn vote_reminder_task(
                         tlen -= 1;
                     }
 
+                    // Spawn push notification
+                    task::spawn(
+                        send_push(row.user_id, pool.clone(), client.clone(), Notification {
+                            target_type: TargetType::Server,
+                            users: push_servers,
+                        })
+                    );                    
+
                     // Now actually send the message
                     let res = channel
                         .send_message(http.clone(), |m| {
@@ -1148,6 +1194,41 @@ async fn vote_reminder_task(
                 }
             }
         }
+    }
+}
+
+async fn send_push(id: i64, pool: sqlx::PgPool, client: reqwest::Client, notification: Notification) {
+    let devices = sqlx::query!(
+        "SELECT endpoint, p256dh, auth FROM push_notifications WHERE user_id = $1",
+        id
+    )
+    .fetch_all(&pool)
+    .await;
+
+    if devices.is_err() {
+        debug!("Failed to get devices for user {}", id);
+        return;
+    }
+
+    let devices = devices.unwrap();
+
+    for device in devices {
+        // Call flamepaw
+        let res = client.post("http://127.0.0.1:1292/flamepaw/_remind")
+        .json(&NotificationSubData {
+            endpoint: device.endpoint,
+            p256dh: device.p256dh,
+            auth: device.auth,
+            data: serde_json::to_string(&notification).unwrap(),
+        })
+        .send()
+        .await;
+
+        if res.is_err() {
+            error!("Failed to send test notification to user {}", id);
+        }
+
+        debug!("{}", res.unwrap().status());
     }
 }
 

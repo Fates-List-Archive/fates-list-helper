@@ -27,7 +27,6 @@ struct LynxActionData {
 
 #[derive(Serialize, Deserialize)]
 struct LynxActionResponse {
-    done: bool,
     reason: Option<String>,
 }
 
@@ -86,13 +85,17 @@ async fn lynx(
         .send()
         .await?;      
         
+    let status = req.status();
+
     let json: LynxActionResponse = req.json().await?;
 
-    if json.done {
-        ctx.say(json.reason.unwrap_or_else(|| "Success!".to_string())).await?;
+    let text = if status == reqwest::StatusCode::OK {
+        json.reason.unwrap_or_else(|| "Success!".to_string())
     } else {
-        ctx.say(json.reason.unwrap_or_else(|| "Failed!".to_string())).await?;
-    }
+        json.reason.unwrap_or_else(|| "Failed!".to_string())
+    }.replace("&lt", "<").replace("&gt", ">");
+
+    ctx.say(text).await?;
 
     Ok(())
 

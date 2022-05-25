@@ -7,3 +7,5 @@ Aims:
 - Server Listing
 
 **This is the source code that powers Fates List Helper (formely Squirrelflight but name changed due to copyright reasons)**
+
+**This requires nightly rust in order to compile**

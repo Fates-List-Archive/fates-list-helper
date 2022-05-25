@@ -1,21 +1,8 @@
 use crate::serverlist;
-use async_tungstenite::{
-    tokio::connect_async, tungstenite::client::IntoClientRequest,
-    tungstenite::protocol::frame::coding::CloseCode, tungstenite::protocol::CloseFrame,
-    tungstenite::Message,
-};
-use poise::futures_util::SinkExt;
-use poise::futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
 type Error = crate::Error;
 type Context<'a> = crate::Context<'a>;
-
-#[derive(poise::ChoiceParameter)]
-enum LynxActionType {
-    Bot,
-    User,
-}
 
 #[derive(Debug)]
 enum LynxAction {
@@ -30,34 +17,22 @@ enum LynxAction {
 }
 
 #[derive(Serialize, Deserialize)]
-#[serde(untagged)]
-enum LynxPayload {
-    RespError { resp: String, detail: String },
-    RespWithScript { resp: String, script: String },
-    PlainResp { resp: String },
-    DetailOnly { detail: String },
-    // Internal parse error
-    InternalParseError { error: String },
-}
-
-#[derive(Serialize, Deserialize)]
 struct LynxActionData {
-    bot_id: Option<String>,
-    user_id: Option<String>,
+    id: String,
     reason: String,
+    action: String,
+    user_id: String,
     context: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
-struct LynxPayloadSend {
-    request: String,
-    action: String,
-    action_data: LynxActionData,
+struct LynxActionResponse {
+    done: bool,
+    reason: Option<String>,
 }
 
 async fn lynx(
     ctx: Context<'_>,
-    action_type: LynxActionType,
     action: LynxAction,
     id: String,
     reason: String,
@@ -68,6 +43,8 @@ async fn lynx(
         ctx.say("ID must be a i64").await?;
         return Ok(());
     }
+
+    let bot_id = id_i64.unwrap();
 
     let data = ctx.data();
 
@@ -85,56 +62,6 @@ async fn lynx(
 
     let api_token = row.unwrap().api_token;
 
-    // Now create WS connection
-    let lynx_json = serde_json::json!({
-        "user": {
-            "id": ctx.author().id.0.to_string(),
-            "username": "Squirrelflight-Virtual",
-            "disc": "0000",
-            "avatar": "https://cdn.discordapp.com/avatars/723456789012345678/723456789012345678.png?size=1024",
-            "bot": false,
-            "status": "Unknown",
-        },
-        "token": api_token,
-    });
-
-    let lynx_json_val = serde_json::to_string(&lynx_json).unwrap();
-    let lynx_json_b64 = base64::encode(lynx_json_val);
-
-    ctx.say("[DEBUG] Connecting to Lynx...").await?;
-
-    let mut req = "wss://lynx.fateslist.xyz/_ws?cli=BurdockRoot%40NODBG&plat=SQUIRREL"
-        .into_client_request()?;
-    *req.uri_mut() = http::Uri::builder()
-        .scheme("wss")
-        .authority("lynx.fateslist.xyz")
-        .path_and_query("/_ws?cli=BurdockRoot%40NODBG&plat=SQUIRREL")
-        .build()
-        .unwrap();
-    req.headers_mut()
-        .insert("Origin", "https://lynx.fateslist.xyz".parse().unwrap());
-    req.headers_mut()
-        .insert("User-Agent", "Squirrelflight/0.1".parse().unwrap());
-    req.headers_mut().insert(
-        "Cookie",
-        format!("sunbeam-session:warriorcats={}", lynx_json_b64)
-            .parse()
-            .unwrap(),
-    );
-
-    let (ws_stream, _) = connect_async(req).await?;
-
-    let (mut write, mut read) = ws_stream.split();
-
-    // Send action
-    ctx.say(format!("[DEBUG] Sending request for action {:?}", action))
-        .await?;
-
-    let action_type_send = match action_type {
-        LynxActionType::Bot => "bot_action".to_string(),
-        LynxActionType::User => "user_action".to_string(),
-    };
-
     let action_str = match action {
         LynxAction::Claim => "claim",
         LynxAction::Unclaim => "unclaim",
@@ -146,85 +73,29 @@ async fn lynx(
         LynxAction::Unban => "unban",
     };
 
-    let mut action_dat = LynxPayloadSend {
-        request: action_type_send.clone(),
-        action: action_str.to_string(),
-        action_data: LynxActionData {
-            bot_id: None,
-            user_id: None,
-            context: None,
+    let req = reqwest::Client::new()
+        .post("https://lynx.fateslist.xyz/_quailfeather/kitty",)
+        .header("Authorization", api_token)
+        .json(&LynxActionData {
+            id: bot_id.to_string(),
+            user_id: ctx.author().id.to_string(),
             reason,
-        },
-    };
+            context: None,
+            action: action_str.to_string(),
+        })
+        .send()
+        .await?;      
+        
+    let json: LynxActionResponse = req.json().await?;
 
-    match action_type {
-        LynxActionType::Bot => {
-            action_dat.action_data.bot_id = Some(id);
-        }
-        LynxActionType::User => {
-            action_dat.action_data.user_id = Some(id);
-        }
+    if json.done {
+        ctx.say(json.reason.unwrap_or_else(|| "Success!".to_string())).await?;
+    } else {
+        ctx.say(json.reason.unwrap_or_else(|| "Failed!".to_string())).await?;
     }
 
-    // JSON serialize and send, then wait for next event
-    write
-        .send(Message::Text(serde_json::to_string(&action_dat).unwrap()))
-        .await?;
+    Ok(())
 
-    loop {
-        let msg = read.next().await;
-
-        if msg.is_none() {
-            continue;
-        }
-        let msg = msg.unwrap();
-        if msg.is_err() {
-            // Close the conn
-            ctx.say("[ERROR] Lynx connection closed (reason=ErrWsMsg)...")
-                .await?;
-            write
-                .send(Message::Close(Some(CloseFrame {
-                    code: CloseCode::Normal,
-                    reason: "Squirrelflight Command Error".into(),
-                })))
-                .await?;
-            return Ok(());
-        }
-
-        let msg = msg.unwrap();
-
-        let resp_msg = match msg {
-            Message::Text(msg) => msg,
-            Message::Ping(_) => {
-                write.send(Message::Pong(Vec::new())).await?;
-                continue;
-            }
-            _ => continue,
-        };
-
-        // Serde serialize
-        let data: LynxPayload =
-            serde_json::from_str(&resp_msg).unwrap_or_else(|err| LynxPayload::InternalParseError {
-                error: format!("{:?}", err),
-            });
-
-        match data {
-            LynxPayload::RespError { resp, detail } => {
-                if resp != action_type_send {
-                    continue;
-                }
-                ctx.say(format!("[RESPONSE] {:?}", detail)).await?;
-                write
-                    .send(Message::Close(Some(CloseFrame {
-                        code: CloseCode::Normal,
-                        reason: "Squirrelflight Command Done".into(),
-                    })))
-                    .await?;
-                return Ok(());
-            }
-            _ => continue,
-        }
-    }
 }
 
 /// Lynx Bridge. STAFF ONLY. Used for verifying bots
@@ -241,7 +112,6 @@ pub async fn claim(
 ) -> Result<(), Error> {
     lynx(
         ctx,
-        LynxActionType::Bot,
         LynxAction::Claim,
         bot_id,
         "STUB_REASON".to_string(),
@@ -259,7 +129,6 @@ pub async fn unclaim(
 ) -> Result<(), Error> {
     lynx(
         ctx,
-        LynxActionType::Bot,
         LynxAction::Unclaim,
         bot_id,
         reason,
@@ -277,7 +146,6 @@ pub async fn requeue(
 ) -> Result<(), Error> {
     lynx(
         ctx,
-        LynxActionType::Bot,
         LynxAction::Requeue,
         bot_id,
         reason,
@@ -295,7 +163,6 @@ pub async fn unverify(
 ) -> Result<(), Error> {
     lynx(
         ctx,
-        LynxActionType::Bot,
         LynxAction::Unverify,
         bot_id,
         reason,
@@ -313,7 +180,6 @@ pub async fn approve(
 ) -> Result<(), Error> {
     lynx(
         ctx,
-        LynxActionType::Bot,
         LynxAction::Approve,
         bot_id,
         reason,
@@ -329,7 +195,7 @@ pub async fn deny(
     #[description = "Bot ID"] bot_id: String,
     #[description = "Reason"] reason: String,
 ) -> Result<(), Error> {
-    lynx(ctx, LynxActionType::Bot, LynxAction::Deny, bot_id, reason).await?;
+    lynx(ctx, LynxAction::Deny, bot_id, reason).await?;
     Ok(())
 }
 
@@ -340,7 +206,7 @@ pub async fn ban(
     #[description = "Bot ID"] bot_id: String,
     #[description = "Reason"] reason: String,
 ) -> Result<(), Error> {
-    lynx(ctx, LynxActionType::Bot, LynxAction::Ban, bot_id, reason).await?;
+    lynx(ctx, LynxAction::Ban, bot_id, reason).await?;
     Ok(())
 }
 
@@ -351,7 +217,7 @@ pub async fn unban(
     #[description = "Bot ID"] bot_id: String,
     #[description = "Reason"] reason: String,
 ) -> Result<(), Error> {
-    lynx(ctx, LynxActionType::Bot, LynxAction::Unban, bot_id, reason).await?;
+    lynx(ctx, LynxAction::Unban, bot_id, reason).await?;
     Ok(())
 }
 

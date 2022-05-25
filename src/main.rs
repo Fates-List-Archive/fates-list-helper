@@ -1,5 +1,3 @@
-#![feature(derive_default_enum)]
-
 use bigdecimal::BigDecimal;
 use bigdecimal::FromPrimitive;
 use bigdecimal::ToPrimitive;

@@ -213,7 +213,7 @@ async fn vote(
             m.content(format!(
                 "**Error when voting for {}:** {}",
                 bot.name,
-                json["reason"].as_str().unwrap_or("Unknown error")
+                json["reason"].as_str().unwrap_or("Unknown error") + "\n**Context: **" + json["context"].as_str().unwrap_or("No additional information")
             ))
             .components(|c| {
                 c.create_action_row(|ar| {

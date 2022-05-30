@@ -1,0 +1,291 @@
+make all --print-data-base --no-builtin-variables --no-builtin-rules --question
+# GNU Make 4.3
+# Built for x86_64-redhat-linux-gnu
+# Copyright (C) 1988-2020 Free Software Foundation, Inc.
+# License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+# This is free software: you are free to change and redistribute it.
+# There is NO WARRANTY, to the extent permitted by law.
+
+# Make data base, printed on Thu May 26 09:14:51 2022
+
+# Variables
+
+# environment
+LC_ALL = C
+# environment
+PGHOST = localhost
+# environment
+SELINUX_USE_CURRENT_RANGE = 
+# environment
+VSCODE_CWD = /home/meow
+# environment
+LESS_TERMCAP_me = [0m
+# default
+MAKE_COMMAND := make
+# environment
+VSCODE_HANDLES_SIGPIPE = true
+# automatic
+@D = $(patsubst %/,%,$(dir $@))
+# environment
+VSCODE_HANDLES_UNCAUGHT_ERRORS = true
+# default
+.VARIABLES := 
+# environment
+PWD = /home/meow/fates-list-helper
+# automatic
+%D = $(patsubst %/,%,$(dir $%))
+# environment
+HOSTNAME = Rootspring
+# environment
+MAIL = /var/spool/mail/meow
+# environment
+OLDPWD = /home/meow
+# automatic
+^D = $(patsubst %/,%,$(dir $^))
+# environment
+VSCODE_LOG_STACK = false
+# automatic
+%F = $(notdir $%)
+# environment
+LANG = C
+# default
+.LOADED := 
+# environment
+LESS_TERMCAP_md = [01;31m
+# default
+.INCLUDE_DIRS = /usr/include /usr/local/include /usr/include
+# makefile
+MAKEFLAGS = pqrR
+# environment
+LESS_TERMCAP_so = [00;47;30m
+# makefile
+CURDIR := /home/meow/fates-list-helper
+# environment
+VSCODE_PIPE_LOGGING = true
+# environment
+APPLICATION_INSIGHTS_NO_DIAGNOSTIC_CHANNEL = true
+# environment
+LESSOPEN = | /usr/bin/env lesspipe.sh %s 2>&-
+# automatic
+*D = $(patsubst %/,%,$(dir $*))
+# environment
+LESS_TERMCAP_ue = [0m
+# environment
+MFLAGS = -pqrR
+# default
+.SHELLFLAGS := -c
+# environment
+HISTSIZE = 10000
+# automatic
++D = $(patsubst %/,%,$(dir $+))
+# makefile (from 'Makefile', line 1)
+MAKEFILE_LIST := Makefile
+# automatic
+@F = $(notdir $@)
+# environment
+SELINUX_ROLE_REQUESTED = 
+# environment
+VSCODE_VERBOSE_LOGGING = true
+# environment
+XDG_SESSION_TYPE = tty
+# automatic
+?D = $(patsubst %/,%,$(dir $?))
+# automatic
+*F = $(notdir $*)
+# environment
+DBUS_SESSION_BUS_ADDRESS = unix:path=/run/user/1000/bus
+# automatic
+<D = $(patsubst %/,%,$(dir $<))
+# environment
+VSCODE_NLS_CONFIG = {"locale":"en","availableLanguages":{}}
+# default
+MAKE_HOST := x86_64-redhat-linux-gnu
+# makefile
+SHELL = /bin/sh
+# environment
+LESS_TERMCAP_us = [01;32m
+# default
+MAKECMDGOALS := all
+# environment
+SHLVL = 2
+# environment
+MAKELEVEL := 0
+# default
+MAKE = $(MAKE_COMMAND)
+# environment
+PATH = /home/meow/.vscode-server/bin/c3511e6c69bb39013c4a4b7b9566ec1ca73fc4d5/bin/remote-cli:/home/meow/FatesList/modules/infra/flamepaw:/home/meow/src/go/bin:/home/meow/bin:/usr/local/bin:/usr/local/sbin:/home/meow/.cargo/bin:/usr/bin:/usr/sbin
+# environment
+LESS_TERMCAP_se = [0m
+# default
+MAKEFILES := 
+# environment
+MOTD_SHOWN = pam
+# automatic
+^F = $(notdir $^)
+# environment
+VIRTUAL_ENV_DISABLE_PROMPT = 1
+# environment
+LESS_TERMCAP_mb = [01;31m
+# environment
+SSH_CLIENT = 100.121.115.22 63275 911
+# environment
+VSCODE_LOG_NATIVE = false
+# automatic
+?F = $(notdir $?)
+# environment
+LS_COLORS = di=34:ln=35:so=32:pi=33:ex=31:bd=36;01:cd=33;01:su=31;40;07:sg=36;40;07:tw=32;40;07:ow=33;40;07:
+# automatic
++F = $(notdir $+)
+# environment
+LESS = -g -i -M -R -S -w -X -z-4
+# 'override' directive
+GNUMAKEFLAGS := 
+# environment
+BROWSER = /home/meow/.vscode-server/bin/c3511e6c69bb39013c4a4b7b9566ec1ca73fc4d5/bin/helpers/browser.sh
+# environment
+GREP_COLOR = 37;45
+# environment
+GREP_COLORS = mt=37;45
+# environment
+LOGNAME = meow
+# makefile
+.DEFAULT_GOAL := all
+# environment
+HISTCONTROL = ignoredups
+# environment
+EDITOR = nano
+# environment
+USER = meow
+# environment
+PGPORT = 1000
+# default
+MAKE_VERSION := 4.3
+# environment
+PGDATABASE = fateslist
+# environment
+PGPASSWORD = oXGBfA81fsuiO0V5iVzt7YNpiNf-OVaoSrBZiGWVFRI
+# environment
+which_declare = typeset -f
+# environment
+VSCODE_EXTHOST_WILL_SEND_SOCKET = true
+# environment
+DEBUGINFOD_URLS = https://debuginfod.fedoraproject.org/ 
+# environment
+PAGER = less
+# environment
+VSCODE_AGENT_FOLDER = /home/meow/.vscode-server
+# environment
+_ = /usr/bin/make
+# environment
+XDG_RUNTIME_DIR = /run/user/1000
+# environment
+VSCODE_IPC_HOOK_CLI = /run/user/1000/vscode-ipc-b081244c-1e06-43a3-a015-590204ce606d.sock
+# environment
+VISUAL = nano
+# environment
+XDG_SESSION_CLASS = user
+# environment
+VSCODE_AMD_ENTRYPOINT = vs/workbench/api/node/extensionHostProcess
+# environment
+HOME = /home/meow
+# environment
+SELINUX_LEVEL_REQUESTED = 
+# environment
+CYCLONE_TOKEN = NzQ1MjI2MjI1NDU0NDE1OTIz.XzusAQ.iFqKilQ8bDXkEvzS052GO8a1EWc
+# environment
+XDG_SESSION_ID = 400
+# default
+.RECIPEPREFIX := 
+# automatic
+<F = $(notdir $<)
+# default
+SUFFIXES := 
+# environment
+PGUSER = fateslist
+# default
+.FEATURES := target-specific order-only second-expansion else-if shortest-stem undefine oneshell nocomment grouped-target extra-prereqs archives jobserver output-sync check-symlink guile load
+# environment
+SSH_CONNECTION = 100.121.115.22 63275 100.87.78.60 911
+# variable set hash-table stats:
+# Load=98/1024=10%, Rehash=0, Collisions=8/131=6%
+
+# Pattern-specific Variable Values
+
+# No pattern-specific variable values.
+
+# Directories
+
+# . (device 64513, inode 345130): 12 files, no impossibilities.
+
+# 12 files, no impossibilities in 1 directories.
+
+# Implicit Rules
+
+# No implicit rules.
+
+# Files
+
+# Not a target:
+Makefile:
+#  Implicit rule search has been done.
+#  Last modified 2022-03-18 09:30:08.117164968
+#  File has been updated.
+#  Successfully updated.
+
+# Not a target:
+.DEFAULT:
+#  Implicit rule search has not been done.
+#  Modification time never checked.
+#  File has not been updated.
+
+all:
+#  Command line target.
+#  Implicit rule search has not been done.
+#  Implicit/static pattern stem: ''
+#  File does not exist.
+#  File has been updated.
+#  Needs to be updated (-q is set).
+# automatic
+# @ := all
+# automatic
+# * := 
+# automatic
+# < := 
+# automatic
+# + := 
+# automatic
+# % := 
+# automatic
+# ^ := 
+# automatic
+# ? := 
+# automatic
+# | := 
+# variable set hash-table stats:
+# Load=8/32=25%, Rehash=0, Collisions=1/11=9%
+#  recipe to execute (from 'Makefile', line 2):
+	cargo build --release
+
+# Not a target:
+.SUFFIXES:
+#  Implicit rule search has not been done.
+#  Modification time never checked.
+#  File has not been updated.
+
+# files hash-table stats:
+# Load=4/1024=0%, Rehash=0, Collisions=0/16=0%
+# VPATH Search Paths
+
+# No 'vpath' search paths.
+
+# No general ('VPATH' variable) search path.
+
+# strcache buffers: 1 (0) / strings = 17 / storage = 141 B / avg = 8 B
+# current buf: size = 8162 B / used = 141 B / count = 17 / avg = 8 B
+
+# strcache performance: lookups = 24 / hit rate = 29%
+# hash-table stats:
+# Load=17/8192=0%, Rehash=0, Collisions=0/24=0%
+# Finished Make data base on Thu May 26 09:14:51 2022
+
+ 

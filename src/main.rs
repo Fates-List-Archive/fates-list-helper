@@ -2,6 +2,7 @@ use bigdecimal::BigDecimal;
 use bigdecimal::FromPrimitive;
 use bigdecimal::ToPrimitive;
 use bristlefrost::models::{State, TargetType};
+use deadpool::Runtime;
 use log::{debug, error, info};
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::Mentionable;
@@ -17,6 +18,7 @@ use std::time::Duration;
 use tokio::{task, time};
 pub struct Data {
     pool: sqlx::PgPool,
+    redis: deadpool_redis::Pool,
     client: reqwest::Client,
     key_data: KeyData,
 }
@@ -213,7 +215,7 @@ async fn vote(
             m.content(format!(
                 "**Error when voting for {}:** {}",
                 bot.name,
-                json["reason"].as_str().unwrap_or("Unknown error") + "\n**Context: **" + json["context"].as_str().unwrap_or("No additional information")
+                json["reason"].as_str().unwrap_or("Unknown error").to_owned() + "\n**Context: **" + json["context"].as_str().unwrap_or("No additional information")
             ))
             .components(|c| {
                 c.create_action_row(|ar| {
@@ -660,7 +662,6 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
 async fn event_listener(
     ctx: &serenity::Context,
     event: &poise::Event<'_>,
-    _framework: &poise::Framework<Data, Error>,
     user_data: &Data,
 ) -> Result<(), Error> {
     match event {
@@ -1246,6 +1247,8 @@ async fn main() {
     poise::Framework::build()
         .token(get_bot_token())
         .user_data_setup(move |_ctx, _ready, _framework| {
+            let cfg = deadpool_redis::Config::from_url("redis://127.0.0.1:1001/1");
+
             Box::pin(async move {
                 Ok(Data {
                     pool: PgPoolOptions::new()
@@ -1254,6 +1257,7 @@ async fn main() {
                         .await
                         .expect("Could not initialize connection"),
                     key_data: get_key_data(),
+                    redis: cfg.create_pool(Some(Runtime::Tokio1)).unwrap(),
                     client,
                 })
             })
@@ -1292,8 +1296,8 @@ async fn main() {
                 })
             },
             on_error: |error| Box::pin(on_error(error)),
-            listener: |ctx, event, framework, user_data| {
-                Box::pin(event_listener(ctx, event, framework, user_data))
+            listener: |ctx, event, _framework, user_data| {
+                Box::pin(event_listener(ctx, event, user_data))
             },
             commands: vec![
                 accage(),
@@ -1324,21 +1328,12 @@ async fn main() {
                     ..disablevr()
                 },
                 vrchannel(),
+                serverlist::webset(),
                 serverlist::set(),
                 serverlist::dumpserver(),
                 serverlist::auditlogs(),
                 serverlist::allowlist(),
-                poise::Command {
-                    subcommands: vec![
-                        serverlist::tag_add(),
-                        serverlist::tag_edit(),
-                        serverlist::tag_remove(),
-                        serverlist::tag_transfer(),
-                        serverlist::tag_nuke(),
-                        serverlist::tag_dump(),
-                    ],
-                    ..serverlist::tags()
-                },
+                serverlist::tags(),
                 serverlist::delserver(),
             ],
             ..poise::FrameworkOptions::default()

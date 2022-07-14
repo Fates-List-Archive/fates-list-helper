@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-poise = { git = "https://github.com/kangalioo/poise", branch = "master" }
+poise = "0.2.2"
 serde = "1.0.117"
 log = "0.4.14"
 env_logger = "0.9.0"
@@ -21,6 +21,8 @@ bigdecimal = { version = "0.2.2", features = ["serde"] }
 thiserror = "1.0"
 rand = "0.8.5"
 bristlefrost = { git = "https://github.com/Fates-List/bristlefrost" }
+deadpool-redis = { version = "0.10.2", features = ["rt_tokio_1", "serde"] }
+deadpool = { version = "0.9.5", features = ["rt_tokio_1", "serde"] }
 
 [dependencies.tokio]
 version = "1"

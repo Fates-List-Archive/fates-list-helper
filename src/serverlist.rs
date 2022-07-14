@@ -1,5 +1,7 @@
 use crate::helpers;
 use bristlefrost::models::{Flags, LongDescriptionType, State, WebhookType};
+use deadpool_redis::redis::AsyncCommands;
+use log::error;
 use poise::serenity_prelude as serenity;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
@@ -48,7 +50,8 @@ pub async fn delserver(ctx: Context<'_>) -> Result<(), Error> {
     prefix_command,
     slash_command,
     guild_cooldown = 10,
-    required_permissions = "SEND_MESSAGES"
+    required_permissions = "SEND_MESSAGES",
+    subcommands("tag_add", "tag_dump", "tag_remove", "tag_edit", "tag_nuke", "tag_transfer")
 )]
 pub async fn tags(ctx: Context<'_>) -> Result<(), Error> {
     ctx.say("Available options are ``tags add``, ``tags dump``, ``tags remove``, ``tags edit``, ``tags nuke`` and ``tags transfer``. *Please read our server listing rules available at https://lynx.fateslist.xyz/privacy#server-listing to ensure everyone has a good experience*").await?;
@@ -631,7 +634,7 @@ pub async fn dumpserver(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-#[derive(poise::ChoiceParameter, Debug)]
+#[derive(poise::ChoiceParameter, Debug, Clone, Copy)]
 pub enum SetField {
     #[name = "Description"]
     Description,
@@ -675,6 +678,33 @@ pub enum SetField {
     WhitelistForm, // Done till here
 }
 
+impl SetField {
+    fn to_col(val: SetField) -> String {
+        match val {
+            SetField::Description => "description".to_string(),
+            SetField::LongDescription => "long_description".to_string(),
+            SetField::LongDescriptionType => "long_description_type".to_string(),
+            SetField::InviteCode => "invite_code".to_string(),
+            SetField::InviteChannelID => "invite_channel_id".to_string(),
+            SetField::Website => "website".to_string(),
+            SetField::Css => "css".to_string(),
+            SetField::BannerCard => "banner_card".to_string(),
+            SetField::BannerPage => "banner_page".to_string(),
+            SetField::KeepBannerDecor => "keep_banner_decor".to_string(),
+            SetField::Vanity => "vanity".to_string(),
+            SetField::State => "state".to_string(),
+            SetField::WebhookURL => "webhook_url".to_string(),
+            SetField::WebhookType => "webhook_type".to_string(),
+            SetField::WebhookSecret => "webhook_secret".to_string(),
+            SetField::WebhookHMACOnly => "webhook_hmac_only".to_string(),
+            SetField::RequiresLogin => "requires_login".to_string(),
+            SetField::VoteRoles => "vote_roles".to_string(),
+            SetField::WhitelistOnly => "whitelist_only".to_string(),
+            SetField::WhitelistForm => "whitelist_form".to_string(),
+        }
+    }
+}
+
 fn create_token(length: usize) -> String {
     thread_rng()
         .sample_iter(&Alphanumeric)
@@ -701,7 +731,7 @@ pub async fn ban_server(data: &Data, guild_id: i64) -> Result<(), Error> {
     Ok(())
 }
 
-#[derive(poise::ChoiceParameter, PartialEq, Debug)]
+#[derive(poise::ChoiceParameter, Debug)]
 pub enum Allowlist {
     #[name = "User Whitelist"]
     Whitelist,
@@ -709,7 +739,7 @@ pub enum Allowlist {
     Blacklist,
 }
 
-#[derive(poise::ChoiceParameter, PartialEq, Debug)]
+#[derive(poise::ChoiceParameter, PartialEq, Eq, Debug)]
 pub enum AllowlistAction {
     #[name = "Add"]
     Add,
@@ -825,6 +855,54 @@ pub async fn allowlist(
     Ok(())
 }
 
+/// Creates a secue link for setting server info using the website (SLASH ONLY)
+#[poise::command(
+    slash_command,
+    guild_only,
+    guild_cooldown = 10,
+    required_permissions = "MANAGE_GUILD",
+)]
+pub async fn webset(
+    ctx: Context<'_>,
+    #[description = "Field to set"] field: SetField,
+) -> Result<(), Error> {
+    // Check if prefix command
+    if let poise::Context::Prefix(_) = ctx {
+        ctx.say("This command can only be used in a slash command").await?;
+        return Ok(());
+    }
+
+    let data = ctx.data();
+
+    let guild = ctx.guild().unwrap();
+
+    let mut redis_conn = data.redis.get().await?;
+
+    let token = create_token(512);
+
+    redis_conn.set_ex(
+        &token, 
+        format!(
+            "{},{}",
+            guild.id.0,
+            SetField::to_col(field)
+        ),
+        60 * 15,
+    ).await?;
+
+    ctx.send(|m| {
+        m.content(
+            format!(
+                "Visit {} to set this setting on the website (or use /set)",
+                "https://fateslist.xyz/frostpaw/slwebset?token=".to_string()+&token
+            )
+        )
+        .ephemeral(true)
+    }).await?;
+
+    Ok(())
+}
+
 /// Sets a field. This adds your server to the server list.
 #[poise::command(
     track_edits,
@@ -837,39 +915,91 @@ pub async fn allowlist(
 pub async fn set(
     ctx: Context<'_>,
     #[description = "Field to set"] field: SetField,
-    #[description = "(Raw) Value to set field to. 'none' to reset"] mut value: Option<String>,
-    #[description = "A file containing the value to set. Overrides value"] long_value: Option<
-        serenity::model::channel::Attachment,
-    >,
 ) -> Result<(), Error> {
     let data = ctx.data();
 
-    if long_value.is_some() {
-        let long_value = long_value.unwrap();
-        if !long_value.filename.ends_with(".txt") {
-            ctx.say("File name must end in .txt at the time!").await?;
-            return Ok(());
-        }
+    let mut msg = ctx.send(|m| {
+        m.content("Please click the 'Open Modal' button to open a modal window to input the value for this field\n\n**If you need a larger text input, consider using ``/webset``**!")
+        .components(|c| {
+            c.create_action_row(|r| {
+                r.create_button(|b| {
+                    b.custom_id("modal")
+                    .label("Open Modal")
+                    .style(serenity::ButtonStyle::Primary)
+                })
+                .create_button(|b| {
+                    b.custom_id("cancel")
+                    .label("Cancel")
+                    .style(serenity::ButtonStyle::Danger)
+                })
+            })
+        })
+    })
+    .await?
+    .message()
+    .await?;
 
-        let download = long_value.download().await?;
+    let interaction = msg
+    .await_component_interaction(ctx.discord())
+    .author_id(ctx.author().id)
+    .await;
 
-        value = Some(match std::str::from_utf8(&download) {
-            Ok(v) => v.to_string(),
-            Err(e) => {
-                ctx.say(format!("File is not a valid string: {:?}!", e))
-                    .await?;
-                return Ok(());
-            }
-        });
-    }
+    msg.edit(ctx.discord(), |b| b.components(|b| b)).await?; // remove buttons after button press
 
-    if value.is_none() {
-        ctx.say("No value or long_value found. Use 'none' if you wish to unset a field")
-            .await?;
+    if interaction.is_none() {
+        error!("No interaction");
         return Ok(());
     }
 
-    let value = value.unwrap();
+    let interaction = interaction.unwrap();
+
+    if interaction.data.custom_id == "cancel" {
+        ctx.say("Cancelled").await?;
+    }
+
+    interaction.create_interaction_response(&ctx.discord(), |b| {
+        b.kind(serenity::InteractionResponseType::Modal)
+        .interaction_response_data(|d| {
+            d.custom_id("value")
+            .title("Value")
+            .content("Sent modal")
+            .ephemeral(true)
+            .components(|c| {
+                c.create_action_row(|r| {
+                    r.create_input_text(|it| {
+                        it.custom_id("value")
+                        .label("The value for".to_string() + &SetField::to_col(field))
+                        .placeholder(". Use 'none' to reset the field")
+                        .min_length(1)
+                        .max_length(4000)
+                        .required(true)
+                        .style(serenity::InputTextStyle::Paragraph)
+                    })
+                })
+            })
+        })
+    }).await?;
+
+    // Wait for user to submit
+    let response = serenity::CollectModalInteraction::new(&ctx.discord().shard)
+        .author_id(interaction.user.id)
+        .await
+        .unwrap();
+
+    // Send acknowledgement so that the pop-up is closed
+    response
+        .create_interaction_response(&ctx.discord(), |b| {
+            b.kind(serenity::InteractionResponseType::DeferredUpdateMessage)
+        })
+        .await?;
+
+    let value = crate::helpers::modal_get(&response.data, "value");
+
+    if value.is_empty() {
+        ctx.say("No value found. Use 'none' if you wish to unset a field")
+            .await?;
+        return Ok(());
+    }
 
     let guild = ctx.guild().unwrap();
 
@@ -1113,7 +1243,7 @@ Note that ``/set`` and other commands will still work to allow you to make any r
         }
         SetField::InviteChannelID => {
             // Check for CREATE_INVITES
-            let value: String = value.chars().filter(|c| c.is_digit(10)).collect();
+            let value: String = value.chars().filter(|c| c.is_ascii_digit()).collect();
 
             let value_i64 = value.parse::<i64>()?;
 

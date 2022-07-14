@@ -1,3 +1,5 @@
+use poise::serenity_prelude::ActionRowComponent;
+use poise::serenity_prelude as serenity;
 use reqwest::header::HeaderValue;
 use std::time::Duration;
 use thiserror::Error;
@@ -44,4 +46,35 @@ pub enum BannerCheckError {
     StatusError(String),
     #[error("Got invalid content type: {0} when requesting this banner")]
     BadContentType(String),
+}
+
+/// Get the action row component given id
+/// In buttons, this returns 'found' if found in response
+pub fn modal_get(resp: &serenity::ModalSubmitInteractionData, id: &str) -> String {
+    for row in &resp.components {
+        for component in &row.components {
+            let id = id.to_string();
+
+            match component {
+                ActionRowComponent::Button(c) => {
+                    if c.custom_id == Some(id) {
+                        return "found".to_string();
+                    }
+                }
+                ActionRowComponent::SelectMenu(s) => {
+                    if s.custom_id == Some(id) {
+                        todo!()
+                    }
+                }
+                ActionRowComponent::InputText(t) => {
+                    if t.custom_id == id {
+                        return t.value.clone();
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    String::new()
 }

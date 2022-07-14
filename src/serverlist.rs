@@ -919,7 +919,7 @@ pub async fn set(
     let data = ctx.data();
 
     let mut msg = ctx.send(|m| {
-        m.content("Please click the 'Open Modal' button to open a modal window to input the value for this field\n\n**If you need a larger text input, consider using ``/webset``**!")
+        m.content("Please click the 'Open Modal' button to open a modal window to input the value for this field\n\n**If you need a larger text input, consider using ``/webset``**")
         .components(|c| {
             c.create_action_row(|r| {
                 r.create_button(|b| {
@@ -955,6 +955,7 @@ pub async fn set(
 
     if interaction.data.custom_id == "cancel" {
         ctx.say("Cancelled").await?;
+        return Ok(());
     }
 
     interaction.create_interaction_response(&ctx.discord(), |b| {
@@ -968,8 +969,8 @@ pub async fn set(
                 c.create_action_row(|r| {
                     r.create_input_text(|it| {
                         it.custom_id("value")
-                        .label("The value for".to_string() + &SetField::to_col(field))
-                        .placeholder(". Use 'none' to reset the field")
+                        .label("The value for ".to_string() + &SetField::to_col(field))
+                        .placeholder("Use 'none' to reset the field!")
                         .min_length(1)
                         .max_length(4000)
                         .required(true)

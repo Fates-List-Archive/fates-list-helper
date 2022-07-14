@@ -565,17 +565,9 @@ async fn queue(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Register application commands in this guild or globally
-///
-/// Run with no arguments to register in guild, run with argument "global" to register globally.
-#[poise::command(prefix_command, slash_command, owners_only, track_edits)]
-async fn register(
-    ctx: Context<'_>,
-    #[flag]
-    #[description = "Global or no global registration"]
-    global: bool,
-) -> Result<(), Error> {
-    poise::builtins::register_application_commands(ctx, global).await?;
-
+#[poise::command(prefix_command, slash_command)]
+async fn register(ctx: Context<'_>) -> Result<(), Error> {
+    poise::builtins::register_application_commands_buttons(ctx).await?;
     Ok(())
 }
 

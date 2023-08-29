@@ -85,7 +85,7 @@ async fn voteserver(ctx: Context<'_>) -> Result<(), Error> {
     let req = data
         .client
         .patch(format!(
-            "https://api.fateslist.xyz/users/{}/servers/{}/votes?test=false",
+            "https://fates-api.select-list.xyz/users/{}/servers/{}/votes?test=false",
             ctx.author().id,
             guild.id
         ))
@@ -176,7 +176,7 @@ async fn vote(
     let req = data
         .client
         .patch(format!(
-            "https://api.fateslist.xyz/users/{}/bots/{}/votes?test=false",
+            "https://fates-api.select-list.xyz/users/{}/bots/{}/votes?test=false",
             ctx.author().id,
             bot.id
         ))
@@ -1239,13 +1239,13 @@ async fn main() {
     poise::Framework::build()
         .token(get_bot_token())
         .user_data_setup(move |_ctx, _ready, _framework| {
-            let cfg = deadpool_redis::Config::from_url("redis://127.0.0.1:1001/1");
+            let cfg = deadpool_redis::Config::from_url("redis://127.0.0.1:6379/1");
 
             Box::pin(async move {
                 Ok(Data {
                     pool: PgPoolOptions::new()
                         .max_connections(MAX_CONNECTIONS)
-                        .connect("postgres://localhost/fateslist")
+                        .connect("postgres:///fateslist")
                         .await
                         .expect("Could not initialize connection"),
                     key_data: get_key_data(),
